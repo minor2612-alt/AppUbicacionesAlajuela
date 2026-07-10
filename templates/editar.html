@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Editar producto</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;}
+.caja{max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,.15);}
+h1{color:#e67e22;text-align:center;}
+input{width:100%;padding:12px;margin:10px 0;font-size:16px;}
+button{width:100%;padding:12px;background:#e67e22;color:white;border:none;border-radius:6px;font-size:18px;}
+a{display:block;text-align:center;margin-top:15px;}
+.error{color:red;text-align:center;font-weight:bold;}
+</style>
+</head>
+<body>
+
+<div class="caja">
+<h1>Editar producto</h1>
+
+{% if error %}
+<p class="error">{{ error }}</p>
+{% endif %}
+
+<form method="POST">
+    <input type="text" name="codigo_buscar" placeholder="Código del producto a editar" value="{{ codigo_buscar or '' }}" required>
+    <input type="text" name="producto" placeholder="Nuevo nombre del producto" value="{{ producto or '' }}">
+    <input type="text" name="codigo" placeholder="Nuevo código" value="{{ codigo or '' }}">
+    <input type="text" name="ubicacion" placeholder="Nueva ubicación" value="{{ ubicacion or '' }}">
+
+    <button type="submit">Guardar cambios</button>
+</form>
+
+<a href="/admin">Volver al panel</a>
+</div>
+
+</body>
+</html> 

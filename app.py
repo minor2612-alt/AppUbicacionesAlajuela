@@ -1,123 +1,186 @@
-from flask import Flask, request
+from flask import Flask, request, render_template, redirect, url_for, session
 import pandas as pd
+import shutil
+import os
+from datetime import datetime
 
 app = Flask(__name__)
 
 EXCEL_FILE = "data/Ubicaciones Alajuela Glide.xlsx"
+app.secret_key = "construplaza_alajuela_2026"
+
+
+def respaldar_excel():
+    carpeta_respaldo = "respaldos"
+
+    if not os.path.exists(carpeta_respaldo):
+        os.makedirs(carpeta_respaldo)
+
+    fecha = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    nombre_respaldo = f"ubicaciones_respaldo_{fecha}.xlsx"
+
+    shutil.copy(EXCEL_FILE, os.path.join(carpeta_respaldo, nombre_respaldo))
 
 
 @app.route("/")
 def inicio():
-    try:
+    df = pd.read_excel(EXCEL_FILE)
+
+    busqueda = request.args.get("buscar", "").strip()
+    resultado = ""
+
+    if busqueda:
+        filtro = df.astype(str).apply(
+            lambda fila: fila.str.contains(busqueda, case=False, na=False)
+        ).any(axis=1)
+
+        encontrados = df[filtro]
+
+        if not encontrados.empty:
+            resultado = encontrados[["PRODUCTO", "CODIGO", "UBICACION"]].to_html(index=False)
+        else:
+            resultado = "<p><b>No se encontraron resultados.</b></p>"
+
+    return render_template("index.html", busqueda=busqueda, resultado=resultado)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if usuario == "admin" and password == "1234":
+            session["admin"] = True
+            return redirect(url_for("admin"))
+
+        return render_template("login.html", error="Usuario o contraseña incorrectos.")
+
+    return render_template("login.html")
+
+
+@app.route("/admin")
+def admin():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    return render_template("admin.html")
+
+
+@app.route("/inventario")
+def inventario():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    buscar = request.args.get("buscar", "").strip()
+    df = pd.read_excel(EXCEL_FILE)
+
+    if buscar:
+        filtro = df.astype(str).apply(
+            lambda fila: fila.str.contains(buscar, case=False, na=False)
+        ).any(axis=1)
+        df = df[filtro]
+
+    tabla = df[["PRODUCTO", "CODIGO", "UBICACION"]].to_html(index=False)
+
+    return render_template("inventario.html", tabla=tabla, buscar=buscar)
+
+
+@app.route("/nuevo", methods=["GET", "POST"])
+def nuevo():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        producto = request.form["producto"].strip()
+        codigo = request.form["codigo"].strip()
+        ubicacion = request.form["ubicacion"].strip()
+
         df = pd.read_excel(EXCEL_FILE)
 
-        busqueda = request.args.get("buscar", "").strip()
+        nuevo_producto = pd.DataFrame({
+            "PRODUCTO": [producto],
+            "CODIGO": [codigo],
+            "UBICACION": [ubicacion]
+        })
 
-        resultado = ""
+        respaldar_excel()
 
-        if busqueda:
-            filtro = df.astype(str).apply(
-                lambda fila: fila.str.contains(busqueda, case=False, na=False)
-            ).any(axis=1)
+        df = pd.concat([df, nuevo_producto], ignore_index=True)
+        df.to_excel(EXCEL_FILE, index=False)
 
-            encontrados = df[filtro]
+        return redirect(url_for("admin"))
 
-            if len(encontrados) > 0:
-                resultado = encontrados[["PRODUCTO", "CODIGO", "UBICACION"]].to_html(index=False)
-            else:
-                resultado = "<p><b>No se encontraron resultados.</b></p>"
+    return render_template("nuevo.html")
 
-        return f"""
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>App Ubicaciones Alajuela</title>
 
-<style>
-body {{
-    font-family: Arial, sans-serif;
-    background-color: #f5f5f5;
-    margin: 0;
-    padding: 30px;
-}}
+@app.route("/editar", methods=["GET", "POST"])
+def editar():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
 
-.contenedor {{
-    max-width: 900px;
-    margin: auto;
-    background: white;
-    padding: 30px;
-    border-radius: 12px;
-    box-shadow: 0 4px 15px rgba(0,0,0,.15);
-}}
+    if request.method == "POST":
+        codigo_buscar = request.form["codigo_buscar"].strip()
+        producto = request.form["producto"].strip()
+        codigo = request.form["codigo"].strip()
+        ubicacion = request.form["ubicacion"].strip()
 
-h1 {{
-    color: #0b5ed7;
-}}
+        df = pd.read_excel(EXCEL_FILE)
+        df["CODIGO"] = df["CODIGO"].astype(str)
 
-input {{
-    font-size: 18px;
-    padding: 8px;
-    width: 300px;
-}}
+        filtro = df["CODIGO"].str.strip() == codigo_buscar
 
-button {{
-    font-size: 18px;
-    padding: 8px 16px;
-    background-color: #0b5ed7;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}}
+        if not filtro.any():
+            return render_template("editar.html", error="No existe ese código.")
 
-button:hover {{
-    background-color: #084298;
-}}
+        indice = df[filtro].index[0]
 
-table {{
-    border-collapse: collapse;
-    width: 100%;
-    margin-top: 20px;
-}}
+        if producto:
+            df.at[indice, "PRODUCTO"] = producto
 
-th, td {{
-    border: 1px solid #ccc;
-    padding: 10px;
-    text-align: left;
-}}
+        if codigo:
+            df.at[indice, "CODIGO"] = codigo
 
-th {{
-    background-color: #0b5ed7;
-    color: white;
-}}
-</style>
+        if ubicacion:
+            df.at[indice, "UBICACION"] = ubicacion
 
-</head>
+        respaldar_excel()
 
-<body>
+        df.to_excel(EXCEL_FILE, index=False)
 
-<div class="contenedor">
+        return redirect(url_for("admin"))
 
-<h1>App Ubicaciones Alajuela</h1>
+    return render_template("editar.html")
 
-<form method="GET">
-    <input type="text" name="buscar" placeholder="Buscar producto o código" value="{busqueda}">
-    <button type="submit">Buscar</button>
-</form>
 
-<br>
+@app.route("/eliminar", methods=["GET", "POST"])
+def eliminar():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
 
-{resultado}
+    if request.method == "POST":
+        codigo = request.form["codigo"].strip()
 
-</div>
+        df = pd.read_excel(EXCEL_FILE)
+        df["CODIGO"] = df["CODIGO"].astype(str)
 
-</body>
-</html>
-"""
+        if codigo not in df["CODIGO"].str.strip().values:
+            return render_template("eliminar.html", error="No existe un producto con ese código.")
 
-    except Exception as e:
-        return f"<h2>Error al leer el Excel:</h2><pre>{e}</pre>"
+        respaldar_excel()
+
+        df = df[df["CODIGO"].str.strip() != codigo]
+        df.to_excel(EXCEL_FILE, index=False)
+
+        return redirect(url_for("admin"))
+
+    return render_template("eliminar.html")
+
+
+@app.route("/logout")
+def logout():
+    session.pop("admin", None)
+    return redirect(url_for("inicio"))
 
 
 if __name__ == "__main__":

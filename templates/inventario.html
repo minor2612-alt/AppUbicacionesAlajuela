@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Inventario</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;}
+.contenedor{max-width:1100px;margin:auto;background:white;padding:30px;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,.15);}
+h1{color:#e67e22;text-align:center;}
+form{text-align:center;margin-bottom:20px;}
+input{width:320px;padding:10px;font-size:16px;}
+button{padding:10px 18px;background:#e67e22;color:white;border:none;border-radius:5px;font-size:16px;}
+table{width:100%;border-collapse:collapse;margin-top:20px;}
+th,td{border:1px solid #ccc;padding:10px;text-align:left;}
+th{background:#e67e22;color:white;}
+a{display:block;text-align:center;margin-top:20px;}
+</style>
+</head>
+<body>
+
+<div class="contenedor">
+<h1>Inventario completo</h1>
+<form method="GET">
+    <input
+        type="text"
+        name="buscar"
+        placeholder="Buscar producto o código"
+        value="{{ buscar }}">
+
+    <button type="submit">Buscar</button>
+</form> 
+
+
+{{ tabla|safe }}
+
+<a href="/admin">Volver al panel</a>
+</div>
+
+</body>
+</html> 

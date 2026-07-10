@@ -2,25 +2,99 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ubicaciones Alajuela</title>
+<title>App Ubicaciones Alajuela</title>
+
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#f5f5f5;
+    margin:0;
+    padding:30px;
+}
+
+.contenedor{
+    max-width:900px;
+    margin:auto;
+    background:white;
+    padding:30px;
+    border-radius:12px;
+    box-shadow:0 4px 15px rgba(0,0,0,.15);
+}
+
+h1{
+    color:#0b5ed7;
+}
+
+input{
+    font-size:18px;
+    padding:8px;
+    width:300px;
+}
+
+button{
+    font-size:18px;
+    padding:8px 16px;
+    background:#0b5ed7;
+    color:white;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+}
+
+button:hover{
+    background:#084298;
+}
+
+table{
+    border-collapse:collapse;
+    width:100%;
+    margin-top:20px;
+}
+
+th,td{
+    border:1px solid #ccc;
+    padding:10px;
+    text-align:left;
+}
+
+th{
+    background:#0b5ed7;
+    color:white;
+}
+
+.admin{
+    margin-top:20px;
+}
+
+.admin a{
+    text-decoration:none;
+    background:#198754;
+    color:white;
+    padding:10px 16px;
+    border-radius:5px;
+}
+</style>
+
 </head>
+
 <body>
 
-<h1>Ubicaciones Alajuela</h1>
+<div class="contenedor">
 
-<p>Producto</p>
-<input type="text" placeholder="Nombre del producto">
+<h1>App Ubicaciones Alajuela</h1>
 
-<p>Código</p>
-<input type="text" placeholder="Código">
+<form method="GET">
+    <input type="text" name="buscar" placeholder="Buscar producto o código" value="{{ busqueda }}">
+    <button type="submit">Buscar</button>
+</form>
 
-<p>Ubicación</p>
-<input type="text" placeholder="Ubicación">
+{{ resultado|safe }}
 
-<br><br>
+<div class="admin">
+    <a href="/login">🔒 Administrador</a>
+</div>
 
-<button>Guardar</button>
+</div>
 
 </body>
 </html> 
