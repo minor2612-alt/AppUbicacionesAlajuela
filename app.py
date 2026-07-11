@@ -1,47 +1,241 @@
-from flask import Flask, request, render_template, redirect, url_for, session
-import pandas as pd
-import shutil
+from __future__ import annotations
+
 import os
-from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+from flask import Flask, redirect, render_template, request, session, url_for
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    delete,
+    func,
+    insert,
+    or_,
+    select,
+    update,
+)
 
 app = Flask(__name__)
 
-EXCEL_FILE = "data/Ubicaciones Alajuela Glide.xlsx"
-app.secret_key = "construplaza_alajuela_2026"
+# En Render se usa la dirección de Neon guardada en DATABASE_URL.
+# En la computadora se usa una base SQLite local para poder hacer pruebas.
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///ubicaciones_neon_local.db",
+)
+
+app.secret_key = os.getenv(
+    "SECRET_KEY",
+    "construplaza_alajuela_2026",
+)
+
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "1234")
+
+EXCEL_FILE = Path("data/Ubicaciones Alajuela Glide.xlsx")
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+)
+
+metadata = MetaData()
+
+productos = Table(
+    "productos",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("producto", String(250), nullable=False),
+    Column("codigo", String(100), nullable=False),
+    Column("ubicacion", String(150), nullable=False),
+)
+
+configuracion = Table(
+    "configuracion",
+    metadata,
+    Column("clave", String(100), primary_key=True),
+    Column("valor", Text, nullable=False),
+)
 
 
-def respaldar_excel():
-    carpeta_respaldo = "respaldos"
+def limpiar_texto(valor) -> str:
+    """Convierte valores vacíos o NaN en texto limpio."""
+    if valor is None or pd.isna(valor):
+        return ""
 
-    if not os.path.exists(carpeta_respaldo):
-        os.makedirs(carpeta_respaldo)
+    texto = str(valor).strip()
 
-    fecha = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    nombre_respaldo = f"ubicaciones_respaldo_{fecha}.xlsx"
+    if texto.lower() == "nan":
+        return ""
 
-    shutil.copy(EXCEL_FILE, os.path.join(carpeta_respaldo, nombre_respaldo))
+    # Evita que códigos numéricos de Excel terminen como 12345.0
+    if texto.endswith(".0"):
+        parte_numerica = texto[:-2]
+        if parte_numerica.isdigit():
+            texto = parte_numerica
+
+    return texto
+
+
+def crear_tablas_e_importar_excel() -> None:
+    """
+    Crea las tablas y copia el Excel a la base de datos una sola vez.
+
+    Si la tabla ya contiene productos, no vuelve a importarlos.
+    """
+    metadata.create_all(engine)
+
+    with engine.begin() as conexion:
+        importacion = conexion.execute(
+            select(configuracion.c.valor).where(
+                configuracion.c.clave == "excel_importado"
+            )
+        ).scalar_one_or_none()
+
+        if importacion == "si":
+            return
+
+        cantidad = conexion.execute(
+            select(func.count()).select_from(productos)
+        ).scalar_one()
+
+        if cantidad > 0:
+            conexion.execute(
+                insert(configuracion).values(
+                    clave="excel_importado",
+                    valor="si",
+                )
+            )
+            return
+
+        if not EXCEL_FILE.exists():
+            conexion.execute(
+                insert(configuracion).values(
+                    clave="excel_importado",
+                    valor="si",
+                )
+            )
+            return
+
+        df = pd.read_excel(EXCEL_FILE, dtype=str)
+        df.columns = [str(columna).strip().upper() for columna in df.columns]
+
+        columnas_necesarias = {"PRODUCTO", "CODIGO", "UBICACION"}
+
+        if not columnas_necesarias.issubset(df.columns):
+            faltantes = columnas_necesarias.difference(df.columns)
+            raise RuntimeError(
+                "Al Excel le faltan estas columnas: "
+                + ", ".join(sorted(faltantes))
+            )
+
+        registros = []
+
+        for _, fila in df.iterrows():
+            producto = limpiar_texto(fila.get("PRODUCTO"))
+            codigo = limpiar_texto(fila.get("CODIGO"))
+            ubicacion = limpiar_texto(fila.get("UBICACION"))
+
+            # Ignora únicamente las filas completamente vacías.
+            if not producto and not codigo and not ubicacion:
+                continue
+
+            registros.append(
+                {
+                    "producto": producto,
+                    "codigo": codigo,
+                    "ubicacion": ubicacion,
+                }
+            )
+
+        if registros:
+            conexion.execute(insert(productos), registros)
+
+        conexion.execute(
+            insert(configuracion).values(
+                clave="excel_importado",
+                valor="si",
+            )
+        )
+
+
+def buscar_productos(texto: str = "") -> list[dict]:
+    texto = texto.strip()
+
+    consulta = select(
+        productos.c.id,
+        productos.c.producto,
+        productos.c.codigo,
+        productos.c.ubicacion,
+    ).order_by(
+        productos.c.producto,
+        productos.c.codigo,
+        productos.c.ubicacion,
+    )
+
+    if texto:
+        patron = f"%{texto.lower()}%"
+
+        consulta = consulta.where(
+            or_(
+                func.lower(productos.c.producto).like(patron),
+                func.lower(productos.c.codigo).like(patron),
+                func.lower(productos.c.ubicacion).like(patron),
+            )
+        )
+
+    with engine.connect() as conexion:
+        filas = conexion.execute(consulta).mappings().all()
+
+    return [dict(fila) for fila in filas]
+
+
+def crear_tabla_html(filas: list[dict]) -> str:
+    if not filas:
+        return "<p><b>No se encontraron resultados.</b></p>"
+
+    df = pd.DataFrame(
+        [
+            {
+                "PRODUCTO": fila["producto"],
+                "CODIGO": fila["codigo"],
+                "UBICACION": fila["ubicacion"],
+            }
+            for fila in filas
+        ]
+    )
+
+    return df.to_html(
+        index=False,
+        escape=True,
+        classes="tabla",
+        border=0,
+    )
+
+
+crear_tablas_e_importar_excel()
 
 
 @app.route("/")
 def inicio():
-    df = pd.read_excel(EXCEL_FILE)
-
     busqueda = request.args.get("buscar", "").strip()
     resultado = ""
 
     if busqueda:
-        filtro = df.astype(str).apply(
-            lambda fila: fila.str.contains(busqueda, case=False, na=False)
-        ).any(axis=1)
+        filas = buscar_productos(busqueda)
+        resultado = crear_tabla_html(filas)
 
-        encontrados = df[filtro]
-
-        if not encontrados.empty:
-            resultado = encontrados[["PRODUCTO", "CODIGO", "UBICACION"]].to_html(index=False)
-        else:
-            resultado = "<p><b>No se encontraron resultados.</b></p>"
-
-    return render_template("index.html", busqueda=busqueda, resultado=resultado)
+    return render_template(
+        "index.html",
+        busqueda=busqueda,
+        resultado=resultado,
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -50,11 +244,14 @@ def login():
         usuario = request.form.get("usuario", "").strip()
         password = request.form.get("password", "").strip()
 
-        if usuario == "admin" and password == "1234":
+        if usuario == ADMIN_USER and password == ADMIN_PASSWORD:
             session["admin"] = True
             return redirect(url_for("admin"))
 
-        return render_template("login.html", error="Usuario o contraseña incorrectos.")
+        return render_template(
+            "login.html",
+            error="Usuario o contraseña incorrectos.",
+        )
 
     return render_template("login.html")
 
@@ -73,17 +270,14 @@ def inventario():
         return redirect(url_for("login"))
 
     buscar = request.args.get("buscar", "").strip()
-    df = pd.read_excel(EXCEL_FILE)
+    filas = buscar_productos(buscar)
+    tabla = crear_tabla_html(filas)
 
-    if buscar:
-        filtro = df.astype(str).apply(
-            lambda fila: fila.str.contains(buscar, case=False, na=False)
-        ).any(axis=1)
-        df = df[filtro]
-
-    tabla = df[["PRODUCTO", "CODIGO", "UBICACION"]].to_html(index=False)
-
-    return render_template("inventario.html", tabla=tabla, buscar=buscar)
+    return render_template(
+        "inventario.html",
+        tabla=tabla,
+        buscar=buscar,
+    )
 
 
 @app.route("/nuevo", methods=["GET", "POST"])
@@ -92,22 +286,26 @@ def nuevo():
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        producto = request.form["producto"].strip()
-        codigo = request.form["codigo"].strip()
-        ubicacion = request.form["ubicacion"].strip()
+        producto = request.form.get("producto", "").strip()
+        codigo = request.form.get("codigo", "").strip()
+        ubicacion = request.form.get("ubicacion", "").strip()
 
-        df = pd.read_excel(EXCEL_FILE)
+        if not producto or not codigo or not ubicacion:
+            return render_template(
+                "nuevo.html",
+                error="Producto, código y ubicación son obligatorios.",
+            )
 
-        nuevo_producto = pd.DataFrame({
-            "PRODUCTO": [producto],
-            "CODIGO": [codigo],
-            "UBICACION": [ubicacion]
-        })
-
-        respaldar_excel()
-
-        df = pd.concat([df, nuevo_producto], ignore_index=True)
-        df.to_excel(EXCEL_FILE, index=False)
+        # Se permiten códigos repetidos porque un mismo producto
+        # puede estar en varias ubicaciones.
+        with engine.begin() as conexion:
+            conexion.execute(
+                insert(productos).values(
+                    producto=producto,
+                    codigo=codigo,
+                    ubicacion=ubicacion,
+                )
+            )
 
         return redirect(url_for("admin"))
 
@@ -120,33 +318,76 @@ def editar():
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        codigo_buscar = request.form["codigo_buscar"].strip()
-        producto = request.form["producto"].strip()
-        codigo = request.form["codigo"].strip()
-        ubicacion = request.form["ubicacion"].strip()
+        codigo_buscar = request.form.get("codigo_buscar", "").strip()
+        producto_nuevo = request.form.get("producto", "").strip()
+        codigo_nuevo = request.form.get("codigo", "").strip()
+        ubicacion_nueva = request.form.get("ubicacion", "").strip()
 
-        df = pd.read_excel(EXCEL_FILE)
-        df["CODIGO"] = df["CODIGO"].astype(str)
+        if not codigo_buscar:
+            return render_template(
+                "editar.html",
+                error="Debe escribir el código que desea editar.",
+            )
 
-        filtro = df["CODIGO"].str.strip() == codigo_buscar
+        with engine.begin() as conexion:
+            coincidencias = conexion.execute(
+                select(
+                    productos.c.id,
+                    productos.c.producto,
+                    productos.c.codigo,
+                    productos.c.ubicacion,
+                ).where(
+                    func.lower(productos.c.codigo)
+                    == codigo_buscar.lower()
+                )
+            ).mappings().all()
 
-        if not filtro.any():
-            return render_template("editar.html", error="No existe ese código.")
+            if not coincidencias:
+                return render_template(
+                    "editar.html",
+                    error="No existe ese código.",
+                )
 
-        indice = df[filtro].index[0]
+            if len(coincidencias) > 1:
+                ubicaciones = ", ".join(
+                    fila["ubicacion"] or "(sin ubicación)"
+                    for fila in coincidencias
+                )
 
-        if producto:
-            df.at[indice, "PRODUCTO"] = producto
+                return render_template(
+                    "editar.html",
+                    error=(
+                        "Ese código tiene varias ubicaciones: "
+                        f"{ubicaciones}. No se realizó ningún cambio. "
+                        "Próximamente agregaremos la selección de la "
+                        "ubicación exacta."
+                    ),
+                )
 
-        if codigo:
-            df.at[indice, "CODIGO"] = codigo
+            fila = coincidencias[0]
 
-        if ubicacion:
-            df.at[indice, "UBICACION"] = ubicacion
+            cambios = {}
 
-        respaldar_excel()
+            if producto_nuevo:
+                cambios["producto"] = producto_nuevo
 
-        df.to_excel(EXCEL_FILE, index=False)
+            if codigo_nuevo:
+                cambios["codigo"] = codigo_nuevo
+
+            if ubicacion_nueva:
+                cambios["ubicacion"] = ubicacion_nueva
+
+            if not cambios:
+                return render_template(
+                    "editar.html",
+                    error="Debe escribir al menos un dato nuevo.",
+                )
+
+            conexion.execute(
+                update(productos)
+                .where(productos.c.id == fila["id"])
+                .values(**cambios)
+            )
 
         return redirect(url_for("admin"))
 
@@ -159,18 +400,51 @@ def eliminar():
         return redirect(url_for("login"))
 
     if request.method == "POST":
-        codigo = request.form["codigo"].strip()
+        codigo = request.form.get("codigo", "").strip()
 
-        df = pd.read_excel(EXCEL_FILE)
-        df["CODIGO"] = df["CODIGO"].astype(str)
+        if not codigo:
+            return render_template(
+                "eliminar.html",
+                error="Debe escribir un código.",
+            )
 
-        if codigo not in df["CODIGO"].str.strip().values:
-            return render_template("eliminar.html", error="No existe un producto con ese código.")
+        with engine.begin() as conexion:
+            coincidencias = conexion.execute(
+                select(
+                    productos.c.id,
+                    productos.c.ubicacion,
+                ).where(
+                    func.lower(productos.c.codigo) == codigo.lower()
+                )
+            ).mappings().all()
 
-        respaldar_excel()
+            if not coincidencias:
+                return render_template(
+                    "eliminar.html",
+                    error="No existe un producto con ese código.",
+                )
 
-        df = df[df["CODIGO"].str.strip() != codigo]
-        df.to_excel(EXCEL_FILE, index=False)
+            if len(coincidencias) > 1:
+                ubicaciones = ", ".join(
+                    fila["ubicacion"] or "(sin ubicación)"
+                    for fila in coincidencias
+                )
+
+                return render_template(
+                    "eliminar.html",
+                    error=(
+                        "Ese código tiene varias ubicaciones: "
+                        f"{ubicaciones}. No se eliminó ninguna. "
+                        "Próximamente podrá escoger exactamente cuál "
+                        "ubicación desea eliminar."
+                    ),
+                )
+
+            conexion.execute(
+                delete(productos).where(
+                    productos.c.id == coincidencias[0]["id"]
+                )
+            )
 
         return redirect(url_for("admin"))
 
