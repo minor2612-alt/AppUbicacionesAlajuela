@@ -20,6 +20,7 @@ from sqlalchemy import (
     select,
     update,
 )
+from werkzeug.security import check_password_hash, generate_password_hash 
 
 app = Flask(__name__)
 
@@ -263,6 +264,30 @@ def admin():
 
     return render_template("admin.html")
 
+@app.route("/cambiar_password", methods=["GET", "POST"])
+def cambiar_password():
+    global ADMIN_PASSWORD
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    mensaje = ""
+
+    if request.method == "POST":
+        actual = request.form.get("actual", "")
+        nueva = request.form.get("nueva", "")
+        confirmar = request.form.get("confirmar", "")
+
+        if actual != ADMIN_PASSWORD:
+            mensaje = "La contraseña actual es incorrecta."
+        elif nueva != confirmar:
+            mensaje = "Las contraseñas nuevas no coinciden."
+        else:
+            os.environ["ADMIN_PASSWORD"] = nueva
+            
+            ADMIN_PASSWORD = nueva
+            mensaje = "Contraseña cambiada correctamente."
+
+    return render_template("cambiar_password.html", mensaje=mensaje) 
 
 @app.route("/inventario")
 def inventario():
