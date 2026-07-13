@@ -344,6 +344,8 @@ def editar():
 
     if request.method == "POST":
         codigo_buscar = request.form.get("codigo_buscar", "").strip()
+        id_registro = request.form.get("id_registro", "").strip()
+
         producto_nuevo = request.form.get("producto", "").strip()
         codigo_nuevo = request.form.get("codigo", "").strip()
         ubicacion_nueva = request.form.get("ubicacion", "").strip()
@@ -371,25 +373,52 @@ def editar():
                 return render_template(
                     "editar.html",
                     error="No existe ese código.",
+                    codigo_buscar=codigo_buscar,
                 )
 
-            if len(coincidencias) > 1:
-                ubicaciones = ", ".join(
-                    fila["ubicacion"] or "(sin ubicación)"
-                    for fila in coincidencias
-                )
-
+            # Si existen varias ubicaciones y todavía no se ha
+            # seleccionado una fila, mostramos la lista.
+            if len(coincidencias) > 1 and not id_registro:
                 return render_template(
                     "editar.html",
-                    error=(
-                        "Ese código tiene varias ubicaciones: "
-                        f"{ubicaciones}. No se realizó ningún cambio. "
-                        "Próximamente agregaremos la selección de la "
-                        "ubicación exacta."
-                    ),
+                    coincidencias=coincidencias,
+                    codigo_buscar=codigo_buscar,
+                    producto=producto_nuevo,
+                    codigo=codigo_nuevo,
+                    ubicacion=ubicacion_nueva,
                 )
 
-            fila = coincidencias[0]
+            # Si se seleccionó una fila, buscamos ese ID exacto.
+            if id_registro:
+                try:
+                    id_seleccionado = int(id_registro)
+                except ValueError:
+                    return render_template(
+                        "editar.html",
+                        error="La selección no es válida.",
+                        coincidencias=coincidencias,
+                        codigo_buscar=codigo_buscar,
+                    )
+
+                fila = next(
+                    (
+                        registro
+                        for registro in coincidencias
+                        if registro["id"] == id_seleccionado
+                    ),
+                    None,
+                )
+
+                if fila is None:
+                    return render_template(
+                        "editar.html",
+                        error="El registro seleccionado no corresponde a ese código.",
+                        coincidencias=coincidencias,
+                        codigo_buscar=codigo_buscar,
+                    )
+            else:
+                # Si solamente existe una coincidencia.
+                fila = coincidencias[0]
 
             cambios = {}
 
@@ -406,6 +435,12 @@ def editar():
                 return render_template(
                     "editar.html",
                     error="Debe escribir al menos un dato nuevo.",
+                    coincidencias=(
+                        coincidencias
+                        if len(coincidencias) > 1
+                        else None
+                    ),
+                    codigo_buscar=codigo_buscar,
                 )
 
             conexion.execute(
@@ -426,6 +461,7 @@ def eliminar():
 
     if request.method == "POST":
         codigo = request.form.get("codigo", "").strip()
+        id_registro = request.form.get("id_registro", "").strip()
 
         if not codigo:
             return render_template(
@@ -437,6 +473,8 @@ def eliminar():
             coincidencias = conexion.execute(
                 select(
                     productos.c.id,
+                    productos.c.producto,
+                    productos.c.codigo,
                     productos.c.ubicacion,
                 ).where(
                     func.lower(productos.c.codigo) == codigo.lower()
@@ -447,33 +485,53 @@ def eliminar():
                 return render_template(
                     "eliminar.html",
                     error="No existe un producto con ese código.",
+                    codigo=codigo,
                 )
 
-            if len(coincidencias) > 1:
-                ubicaciones = ", ".join(
-                    fila["ubicacion"] or "(sin ubicación)"
-                    for fila in coincidencias
-                )
-
+            # Primera etapa: mostrar todos los registros encontrados.
+            if not id_registro:
                 return render_template(
                     "eliminar.html",
-                    error=(
-                        "Ese código tiene varias ubicaciones: "
-                        f"{ubicaciones}. No se eliminó ninguna. "
-                        "Próximamente podrá escoger exactamente cuál "
-                        "ubicación desea eliminar."
-                    ),
+                    coincidencias=coincidencias,
+                    codigo=codigo,
+                )
+
+            try:
+                id_seleccionado = int(id_registro)
+            except ValueError:
+                return render_template(
+                    "eliminar.html",
+                    error="La selección no es válida.",
+                    coincidencias=coincidencias,
+                    codigo=codigo,
+                )
+
+            fila = next(
+                (
+                    registro
+                    for registro in coincidencias
+                    if registro["id"] == id_seleccionado
+                ),
+                None,
+            )
+
+            if fila is None:
+                return render_template(
+                    "eliminar.html",
+                    error="El registro seleccionado no corresponde a ese código.",
+                    coincidencias=coincidencias,
+                    codigo=codigo,
                 )
 
             conexion.execute(
                 delete(productos).where(
-                    productos.c.id == coincidencias[0]["id"]
+                    productos.c.id == fila["id"]
                 )
             )
 
         return redirect(url_for("admin"))
 
-    return render_template("eliminar.html")
+    return render_template("eliminar.html") 
 
 
 @app.route("/logout")

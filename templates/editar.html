@@ -23,13 +23,55 @@ a{display:block;text-align:center;margin-top:15px;}
 {% endif %}
 
 <form method="POST">
-    <input type="text" name="codigo_buscar" placeholder="Código del producto a editar" value="{{ codigo_buscar or '' }}" required>
-    <input type="text" name="producto" placeholder="Nuevo nombre del producto" value="{{ producto or '' }}">
-    <input type="text" name="codigo" placeholder="Nuevo código" value="{{ codigo or '' }}">
-    <input type="text" name="ubicacion" placeholder="Nueva ubicación" value="{{ ubicacion or '' }}">
+
+    {% if coincidencias %}
+        <p><strong>Seleccione la ubicación exacta que desea editar:</strong></p>
+
+        {% for fila in coincidencias %}
+            <label style="display:block; margin:10px 0;">
+                <input
+                    type="radio"
+                    name="id_registro"
+                    value="{{ fila.id }}"
+                    required
+                >
+                Código: {{ fila.codigo }}
+                — Ubicación: {{ fila.ubicacion }}
+                — Producto: {{ fila.producto }}
+            </label>
+        {% endfor %}
+    {% endif %}
+
+    <input
+        type="text"
+        name="codigo_buscar"
+        placeholder="Código del producto a editar"
+        value="{{ codigo_buscar or '' }}"
+    >
+
+    <input
+        type="text"
+        name="producto"
+        placeholder="Nuevo nombre del producto"
+        value="{{ producto or '' }}"
+    >
+
+    <input
+        type="text"
+        name="codigo"
+        placeholder="Nuevo código"
+        value="{{ codigo or '' }}"
+    >
+
+    <input
+        type="text"
+        name="ubicacion"
+        placeholder="Nueva ubicación"
+        value="{{ ubicacion or '' }}"
+    >
 
     <button type="submit">Guardar cambios</button>
-</form>
+</form> 
 
 <a href="/admin">Volver al panel</a>
 </div>
