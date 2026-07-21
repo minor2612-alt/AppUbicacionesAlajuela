@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-
+import unicodedata
 import pandas as pd
+from html import escape
 from flask import Flask, redirect, render_template, request, session, url_for
 from sqlalchemy import (
     Column,
@@ -164,7 +165,56 @@ def crear_tablas_e_importar_excel() -> None:
                 valor="si",
             )
         )
+def quitar_acentos(texto: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", texto)
+        if unicodedata.category(c) != "Mn"
+    ) 
+def variantes_singular_plural(texto: str) -> list[str]:
+    texto = texto.strip().lower()
 
+    if not texto:
+        return []
+
+    palabras = texto.split()
+    ultima = palabras[-1]
+    variantes_ultima = {ultima}
+
+    vocales = "aeiouáéíóú"
+
+    # Convertir plural a singular
+    if ultima.endswith("ces") and len(ultima) > 3:
+        variantes_ultima.add(ultima[:-3] + "z")
+
+    elif ultima.endswith("es") and len(ultima) > 2:
+        letra_anterior = ultima[-3]
+
+        if letra_anterior not in vocales:
+            variantes_ultima.add(ultima[:-2])
+
+    elif ultima.endswith("s") and len(ultima) > 1:
+        letra_anterior = ultima[-2]
+
+        if letra_anterior in vocales:
+            variantes_ultima.add(ultima[:-1])
+
+    # Convertir singular a plural
+    if ultima.endswith("z"):
+        variantes_ultima.add(ultima[:-1] + "ces")
+
+    elif ultima[-1] in vocales:
+        variantes_ultima.add(ultima + "s")
+
+    else:
+        variantes_ultima.add(ultima + "es")
+
+    variantes = []
+
+    for variante_ultima in variantes_ultima:
+        palabras_variantes = palabras[:-1] + [variante_ultima]
+        variantes.append(" ".join(palabras_variantes))
+
+    return variantes 
 
 def buscar_productos(texto: str = "") -> list[dict]:
     texto = texto.strip()
@@ -181,43 +231,66 @@ def buscar_productos(texto: str = "") -> list[dict]:
     )
 
     if texto:
-        patron = f"%{texto.lower()}%"
+        variantes = variantes_singular_plural(texto)
+        condiciones = []
 
-        consulta = consulta.where(
-            or_(
-                func.lower(productos.c.producto).like(patron),
-                func.lower(productos.c.codigo).like(patron),
-                func.lower(productos.c.ubicacion).like(patron),
+        for variante in variantes:
+            patron = f"%{variante}%"
+
+            condiciones.extend(
+                [
+                    func.lower(productos.c.producto).like(patron),
+                    func.lower(productos.c.codigo).like(patron),
+                    func.lower(productos.c.ubicacion).like(patron),
+                ]
             )
-        )
+
+        consulta = consulta.where(or_(*condiciones))
 
     with engine.connect() as conexion:
         filas = conexion.execute(consulta).mappings().all()
 
-    return [dict(fila) for fila in filas]
+    return [dict(fila) for fila in filas] 
 
 
 def crear_tabla_html(filas: list[dict]) -> str:
     if not filas:
-        return "<p><b>No se encontraron resultados.</b></p>"
+        return """
+        <div class="sin-resultados">
+            <strong>No se encontraron resultados.</strong>
+        </div>
+        """
 
-    df = pd.DataFrame(
-        [
-            {
-                "PRODUCTO": fila["producto"],
-                "CODIGO": fila["codigo"],
-                "UBICACION": fila["ubicacion"],
-            }
-            for fila in filas
-        ]
-    )
+    tarjetas = []
 
-    return df.to_html(
-        index=False,
-        escape=True,
-        classes="tabla",
-        border=0,
-    )
+    for fila in filas:
+        producto = escape(str(fila.get("producto", "")))
+        codigo = escape(str(fila.get("codigo", "")))
+        ubicacion = escape(str(fila.get("ubicacion", "")))
+
+        tarjeta = f"""
+        <article class="tarjeta-producto">
+            <div class="dato-producto">
+                <span class="etiqueta">📦 Producto</span>
+                <span class="valor producto">{producto}</span>
+            </div>
+
+            <div class="dato-producto">
+                <span class="etiqueta">🔖 Código</span>
+                <span class="valor">{codigo}</span>
+            </div>
+
+            <div class="dato-producto">
+                <span class="etiqueta">📍 Ubicación</span>
+                <span class="valor ubicacion">{ubicacion}</span>
+            </div>
+        </article>
+        """
+
+        tarjetas.append(tarjeta)
+
+    return '<div class="lista-resultados">' + "".join(tarjetas) + "</div>" 
+
 
 
 crear_tablas_e_importar_excel()
@@ -524,14 +597,162 @@ def eliminar():
                 )
 
             conexion.execute(
-                delete(productos).where(
-                    productos.c.id == fila["id"]
-                )
-            )
+    delete(productos).where(
+        productos.c.id == fila["id"]
+    )
+) 
 
         return redirect(url_for("admin"))
 
     return render_template("eliminar.html") 
+@app.route("/eliminar_ubicacion", methods=["GET", "POST"])
+def eliminar_ubicacion():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        ubicacion_buscar = request.form.get(
+            "ubicacion_buscar",
+            "",
+        ).strip()
+
+        id_registro = request.form.get(
+            "id_registro",
+            "",
+        ).strip()
+
+        accion = request.form.get(
+            "accion",
+            "",
+        ).strip()
+
+        if not ubicacion_buscar:
+            return render_template(
+                "eliminar_ubicacion.html",
+                error="Debe escribir una ubicación.",
+            )
+
+        with engine.begin() as conexion:
+            coincidencias = conexion.execute(
+                select(
+                    productos.c.id,
+                    productos.c.producto,
+                    productos.c.codigo,
+                    productos.c.ubicacion,
+                )
+                .where(
+                    func.lower(productos.c.ubicacion)
+                    == ubicacion_buscar.lower()
+                )
+                .order_by(
+                    productos.c.producto,
+                    productos.c.codigo,
+                )
+            ).mappings().all()
+
+            if not coincidencias:
+                return render_template(
+                    "eliminar_ubicacion.html",
+                    error="No existen productos en esa ubicación.",
+                    ubicacion_buscar=ubicacion_buscar,
+                )
+
+            if accion == "eliminar_toda":
+                cantidad = len(coincidencias)
+
+                conexion.execute(
+                    delete(productos).where(
+                        func.lower(productos.c.ubicacion)
+                        == ubicacion_buscar.lower()
+                    )
+                )
+
+                return render_template(
+                    "eliminar_ubicacion.html",
+                    mensaje=(
+                        f"Se eliminó completamente la ubicación "
+                        f"{ubicacion_buscar}, junto con "
+                        f"{cantidad} registro(s)."
+                    ),
+                    ubicacion_buscar="",
+                    coincidencias=[],
+                )
+
+            if not id_registro:
+                return render_template(
+                    "eliminar_ubicacion.html",
+                    coincidencias=coincidencias,
+                    ubicacion_buscar=ubicacion_buscar,
+                )
+
+            try:
+                id_seleccionado = int(id_registro)
+            except ValueError:
+                return render_template(
+                    "eliminar_ubicacion.html",
+                    error="La selección no es válida.",
+                    coincidencias=coincidencias,
+                    ubicacion_buscar=ubicacion_buscar,
+                )
+
+            fila = next(
+                (
+                    registro
+                    for registro in coincidencias
+                    if registro["id"] == id_seleccionado
+                ),
+                None,
+            )
+
+            if fila is None:
+                return render_template(
+                    "eliminar_ubicacion.html",
+                    error=(
+                        "El registro seleccionado no corresponde "
+                        "a esa ubicación."
+                    ),
+                    coincidencias=coincidencias,
+                    ubicacion_buscar=ubicacion_buscar,
+                )
+
+            conexion.execute(
+    delete(productos).where(
+        productos.c.id == fila["id"]
+    )
+) 
+
+            codigo_modificado = fila["codigo"]
+
+        with engine.connect() as conexion:
+            coincidencias_restantes = conexion.execute(
+                select(
+                    productos.c.id,
+                    productos.c.producto,
+                    productos.c.codigo,
+                    productos.c.ubicacion,
+                )
+                .where(
+                    func.lower(productos.c.ubicacion)
+                    == ubicacion_buscar.lower()
+                )
+                .order_by(
+                    productos.c.producto,
+                    productos.c.codigo,
+                )
+            ).mappings().all()
+
+        return render_template(
+            "eliminar_ubicacion.html",
+            mensaje=(
+    f"Se eliminó el registro con código "
+    f"{codigo_modificado} correctamente."
+), 
+            coincidencias=coincidencias_restantes,
+            ubicacion_buscar=ubicacion_buscar,
+        )
+
+    return render_template("eliminar_ubicacion.html") 
+
 
 
 @app.route("/logout")
