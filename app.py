@@ -5,7 +5,7 @@ from pathlib import Path
 import unicodedata
 import pandas as pd
 from html import escape
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, redirect, render_template, request, session, jsonify, url_for
 from sqlalchemy import (
     Column,
     Integer,
@@ -295,7 +295,11 @@ def crear_tabla_html(filas: list[dict]) -> str:
 
 crear_tablas_e_importar_excel()
 
-
+@app.route("/estado")
+def estado():
+    respuesta = jsonify({"estado": "listo"})
+    respuesta.headers["Access-Control-Allow-Origin"] = "*"
+    return respuesta
 @app.route("/")
 def inicio():
     busqueda = request.args.get("buscar", "").strip()

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Iniciando Sistema de Ubicaciones</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #07355c;
+            background:
+                linear-gradient(
+                    180deg,
+                    #f45116 0,
+                    #f45116 34%,
+                    #fff8f4 34%,
+                    #fff8f4 100%
+                );
+        }
+
+        .encabezado {
+            padding: 28px 20px 55px;
+            text-align: center;
+            color: white;
+        }
+
+        .logo {
+            display: block;
+            width: 155px;
+            max-width: 42vw;
+            margin: 0 auto 14px;
+            border-radius: 14px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.20);
+        }
+
+        .encabezado h1 {
+            margin: 8px 0 5px;
+            font-size: clamp(29px, 5vw, 48px);
+        }
+
+        .encabezado p {
+            margin: 0;
+            font-size: clamp(17px, 3vw, 23px);
+        }
+
+        .contenido {
+            width: min(760px, calc(100% - 30px));
+            margin: -30px auto 35px;
+            padding: 40px 34px;
+            text-align: center;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(50, 30, 20, 0.16);
+        }
+
+        .icono {
+            display: grid;
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 20px;
+            place-items: center;
+            font-size: 54px;
+            background: #fff2eb;
+            border-radius: 50%;
+        }
+
+        .contenido h2 {
+            margin: 0 0 12px;
+            font-size: clamp(29px, 5vw, 43px);
+        }
+
+        .mensaje {
+            margin: 0 auto 28px;
+            max-width: 570px;
+            color: #64748b;
+            font-size: 20px;
+            line-height: 1.5;
+        }
+
+        .aviso {
+            margin-bottom: 28px;
+            padding: 18px;
+            color: #334155;
+            background: #fffaf7;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+        }
+
+        .aviso strong {
+            display: block;
+            margin-bottom: 8px;
+            color: #07355c;
+            font-size: 18px;
+        }
+
+        .barra {
+            height: 12px;
+            overflow: hidden;
+            background: #e5e7eb;
+            border-radius: 999px;
+        }
+
+        .progreso {
+            width: 8%;
+            height: 100%;
+            background:
+                repeating-linear-gradient(
+                    45deg,
+                    #f45116,
+                    #f45116 12px,
+                    #ff7a35 12px,
+                    #ff7a35 24px
+                );
+            border-radius: inherit;
+            transition: width 0.7s ease;
+            animation: moverFondo 1s linear infinite;
+        }
+
+        @keyframes moverFondo {
+            from {
+                background-position: 0 0;
+            }
+
+            to {
+                background-position: 34px 0;
+            }
+        }
+
+        .estado {
+            min-height: 30px;
+            margin: 16px 0 24px;
+            color: #64748b;
+            font-size: 18px;
+        }
+
+        .informacion {
+            padding: 20px;
+            text-align: left;
+            color: #334155;
+            background: #f0f7ff;
+            border: 1px solid #9ac7ff;
+            border-radius: 14px;
+            line-height: 1.5;
+        }
+
+        .informacion strong {
+            color: #0756a3;
+        }
+
+        .boton {
+            display: none;
+            width: 100%;
+            margin-top: 22px;
+            padding: 15px 20px;
+            border: 0;
+            border-radius: 12px;
+            color: white;
+            background: #f45116;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .boton:hover {
+            background: #d8400c;
+        }
+
+        .pie {
+            padding: 0 20px 30px;
+            text-align: center;
+            color: #6b7280;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                background:
+                    linear-gradient(
+                        180deg,
+                        #f45116 0,
+                        #f45116 29%,
+                        #fff8f4 29%,
+                        #fff8f4 100%
+                    );
+            }
+
+            .encabezado {
+                padding-top: 20px;
+                padding-bottom: 45px;
+            }
+
+            .logo {
+                width: 125px;
+            }
+
+            .contenido {
+                padding: 30px 20px;
+                border-radius: 20px;
+            }
+
+            .icono {
+                width: 82px;
+                height: 82px;
+                font-size: 44px;
+            }
+
+            .mensaje {
+                font-size: 17px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header class="encabezado">
+    <img
+        src="logo_construplaza.jpg"
+        class="logo"
+        alt="Logo Construplaza"
+    >
+
+    <h1>Sistema de Ubicaciones</h1>
+    <p>Construplaza · Sucursal Alajuela</p>
+</header>
+
+<main class="contenido">
+
+    <div class="icono">🗄️</div>
+
+    <h2>Iniciando aplicación</h2>
+
+    <p class="mensaje">
+        Ha pasado un tiempo desde la última visita.
+        Estamos preparando todo para usted.
+    </p>
+
+    <div class="aviso">
+        <strong>⏱️ Esto puede tardar unos segundos</strong>
+        El servicio gratuito se activa nuevamente cuando vuelve a utilizarse.
+    </div>
+
+    <div class="barra">
+        <div
+            id="progreso"
+            class="progreso"
+        ></div>
+    </div>
+
+    <p
+        id="estado"
+        class="estado"
+    >
+        Conectando con el servidor...
+    </p>
+
+    <div class="informacion">
+        <strong>ℹ️ ¿Por qué ocurre esto?</strong><br>
+        Para ahorrar recursos, la aplicación se pausa automáticamente
+        después de un periodo de inactividad. Esta pantalla la abrirá
+        en cuanto esté disponible.
+    </div>
+
+    <button
+        id="boton"
+        class="boton"
+        type="button"
+        onclick="abrirAplicacion()"
+    >
+        Intentar abrir nuevamente
+    </button>
+
+</main>
+
+<footer class="pie">
+    Si la espera continúa, pulse el botón para volver a intentarlo.
+</footer>
+
+<script>
+    const URL_APLICACION =
+        "https://appubicacionesalajuela.onrender.com";
+
+    const URL_ESTADO = URL_APLICACION + "/estado";
+
+    const textoEstado = document.getElementById("estado");
+    const barraProgreso = document.getElementById("progreso");
+    const boton = document.getElementById("boton");
+
+    let porcentaje = 8;
+    let intentos = 0;
+    let aplicacionLista = false;
+
+    function abrirAplicacion() {
+        window.location.href = URL_APLICACION;
+    }
+
+    function actualizarBarra() {
+        if (aplicacionLista) {
+            porcentaje = 100;
+        } else if (porcentaje < 90) {
+            porcentaje += Math.floor(Math.random() * 8) + 2;
+            porcentaje = Math.min(porcentaje, 90);
+        }
+
+        barraProgreso.style.width = porcentaje + "%";
+    }
+
+    async function comprobarEstado() {
+        intentos++;
+
+        try {
+            const respuesta = await fetch(
+                URL_ESTADO + "?t=" + Date.now(),
+                {
+                    method: "GET",
+                    cache: "no-store"
+                }
+            );
+
+            if (!respuesta.ok) {
+                throw new Error("Servidor aún no disponible");
+            }
+
+            const datos = await respuesta.json();
+
+            if (datos.estado === "listo") {
+                aplicacionLista = true;
+                actualizarBarra();
+
+                textoEstado.textContent =
+                    "Aplicación lista. Abriendo el sistema...";
+
+                setTimeout(abrirAplicacion, 900);
+                return;
+            }
+        } catch (error) {
+            if (intentos < 4) {
+                textoEstado.textContent =
+                    "Activando el servicio...";
+            } else if (intentos < 10) {
+                textoEstado.textContent =
+                    "Preparando la base de datos...";
+            } else {
+                textoEstado.textContent =
+                    "El inicio está tardando un poco más de lo habitual.";
+            }
+        }
+
+        actualizarBarra();
+
+        if (intentos >= 18) {
+            boton.style.display = "block";
+        }
+
+        setTimeout(comprobarEstado, 4000);
+    }
+
+    actualizarBarra();
+    comprobarEstado();
+
+    setInterval(actualizarBarra, 1500);
+</script>
+
+</body>
+</html> 
