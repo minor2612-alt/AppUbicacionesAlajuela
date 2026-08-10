@@ -36,16 +36,19 @@
         <input
             type="text"
             name="buscar"
+            id="campo-busqueda"
             placeholder="Producto o código"
             value="{{ busqueda }}"
             autocomplete="off"
         >
-
+<button type="button" id="boton-escanear">
+    📷 Escanear código
+</button>
         <button type="submit">
             Buscar
         </button>
     </form>
-
+<div id="lector" style="width:100%; max-width:500px; margin:20px auto; display:none;"></div> 
     <div class="resultados">
         {{ resultado|safe }}
     </div>
@@ -55,6 +58,65 @@
     </div>
 
 </main>
+<script src="https://unpkg.com/html5-qrcode"></script>
 
+<script>
+const botonEscanear = document.getElementById("boton-escanear");
+const campoBusqueda = document.getElementById("campo-busqueda");
+
+let lectorActivo = false;
+let html5QrCode;
+
+botonEscanear.addEventListener("click", async function () {
+
+    const lector = document.getElementById("lector");
+
+    if (lectorActivo) {
+        await html5QrCode.stop();
+        lector.style.display = "none";
+        lectorActivo = false;
+        botonEscanear.textContent = "📷 Escanear código";
+        return;
+    }
+
+    lector.style.display = "block";
+
+    html5QrCode = new Html5Qrcode("lector");
+
+    try {
+        await html5QrCode.start(
+            { facingMode: "environment" },
+            {
+                fps: 10,
+                
+            },
+            
+            async function (codigoLeido) {
+
+                const codigoLimpio = codigoLeido.replace(/\D/g, "");
+campoBusqueda.value = codigoLimpio;
+
+                await html5QrCode.stop();
+
+                lector.style.display = "none";
+                lectorActivo = false;
+
+                document.querySelector(".formulario-busqueda").submit();
+            }
+        );
+
+        lectorActivo = true;
+        botonEscanear.textContent = "✖ Cerrar cámara";
+
+    } catch (error) {
+        lector.style.display = "none";
+
+        alert(
+            "No se pudo abrir la cámara. Verifique que el navegador tenga permiso para usarla."
+        );
+    }
+}); 
+
+</script> 
 </body>
 </html> 
