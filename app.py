@@ -55,6 +55,7 @@ productos = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("producto", String(250), nullable=False),
     Column("codigo", String(100), nullable=False),
+    Column("codigo_barras", String(100), nullable=True),
     Column("ubicacion", String(150), nullable=False),
 )
 
@@ -223,6 +224,7 @@ def buscar_productos(texto: str = "") -> list[dict]:
         productos.c.id,
         productos.c.producto,
         productos.c.codigo,
+        productos.c.codigo_barras,
         productos.c.ubicacion,
     ).order_by(
         productos.c.producto,
@@ -241,6 +243,7 @@ def buscar_productos(texto: str = "") -> list[dict]:
                 [
                     func.lower(productos.c.producto).like(patron),
                     func.lower(productos.c.codigo).like(patron),
+                    func.lower(func.coalesce(productos.c.codigo_barras, "")).like(patron),
                     func.lower(productos.c.ubicacion).like(patron),
                 ]
             )
@@ -390,6 +393,7 @@ def nuevo():
     if request.method == "POST":
         producto = request.form.get("producto", "").strip()
         codigo = request.form.get("codigo", "").strip()
+        codigo_barras = request.form.get("codigo_barras", "").strip() 
         ubicacion = request.form.get("ubicacion", "").strip()
 
         if not producto or not codigo or not ubicacion:
@@ -405,6 +409,7 @@ def nuevo():
                 insert(productos).values(
                     producto=producto,
                     codigo=codigo,
+                    codigo_barras=codigo_barras or None,
                     ubicacion=ubicacion,
                 )
             )
@@ -425,6 +430,7 @@ def editar():
 
         producto_nuevo = request.form.get("producto", "").strip()
         codigo_nuevo = request.form.get("codigo", "").strip()
+        codigo_barras_nuevo = request.form.get("codigo_barras", "").strip()
         ubicacion_nueva = request.form.get("ubicacion", "").strip()
 
         if not codigo_buscar:
@@ -504,7 +510,8 @@ def editar():
 
             if codigo_nuevo:
                 cambios["codigo"] = codigo_nuevo
-
+            if codigo_barras_nuevo:
+                cambios["codigo_barras"] = codigo_barras_nuevo
             if ubicacion_nueva:
                 cambios["ubicacion"] = ubicacion_nueva
 

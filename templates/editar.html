@@ -62,7 +62,12 @@ a{display:block;text-align:center;margin-top:15px;}
         placeholder="Nuevo código"
         value="{{ codigo or '' }}"
     >
-
+<input
+    type="text"
+    name="codigo_barras"
+    placeholder="Nuevo código de barras"
+    value="{{ codigo_barras or '' }}"
+> 
     <input
         type="text"
         name="ubicacion"
