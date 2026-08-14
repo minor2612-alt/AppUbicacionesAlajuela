@@ -303,6 +303,9 @@ def estado():
     respuesta = jsonify({"estado": "listo"})
     respuesta.headers["Access-Control-Allow-Origin"] = "*"
     return respuesta
+@app.route("/service-worker.js")
+def service_worker():
+    return app.send_static_file("service-worker.js")
 @app.route("/")
 def inicio():
     busqueda = request.args.get("buscar", "").strip()
