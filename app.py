@@ -5,7 +5,7 @@ from pathlib import Path
 import unicodedata
 import pandas as pd
 from html import escape
-from flask import Flask, redirect, render_template, request, session, jsonify, url_for
+from flask import Flask, redirect, render_template, request, session, jsonify, url_for, send_from_directory
 from sqlalchemy import (
     Column,
     Integer,
@@ -305,6 +305,7 @@ def estado():
     return respuesta
 @app.route("/service-worker.js")
 def service_worker():
+    return send_from_directory("static", "service-worker.js")
     return app.send_static_file("service-worker.js")
 @app.route("/")
 def inicio():
