@@ -54,7 +54,14 @@
     <div class="resultados">
         {{ resultado|safe }}
     </div>
-
+{% if resultado %}
+<button
+    type="button"
+    onclick="document.getElementById('boton-escanear').click()"
+>
+    📷 Escanear otro
+</button>
+{% endif %} 
     <div class="admin">
         <a href="/login">🔒 Administrador</a>
     </div>
