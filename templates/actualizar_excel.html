@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Actualizar desde Excel</title>
+</head>
+
+<body>
+
+    <div class="contenedor">
+
+        <h1>Construplaza</h1>
+        <h2>Actualizar ubicaciones desde Excel</h2>
+
+        <p>
+            Seleccione el archivo de Excel que contiene los productos
+            y las nuevas ubicaciones.
+        </p>
+
+        <form method="POST" enctype="multipart/form-data">
+
+            <input
+                type="file"
+                name="archivo"
+                accept=".xlsx,.xls"
+                required
+            >
+
+            <button type="submit">
+                📊 Cargar y revisar archivo
+            </button>
+
+        </form>
+
+        <br>
+{% if mensaje %}
+    <p><strong>{{ mensaje }}</strong></p>
+{% endif %}
+
+{% if resumen %}
+    <div>
+        <h3>Resumen del archivo</h3>
+        <p>Filas encontradas: {{ resumen.filas }}</p>
+        <p>Columnas detectadas:</p>
+        <ul>
+            {% for columna in resumen.columnas %}
+                <li>{{ columna }}</li>
+            {% endfor %}
+        </ul>
+        <p><strong>Productos existentes:</strong> {{ resumen.existentes }}</p>
+<p><strong>Nuevas ubicaciones:</strong> {{ resumen.nuevas_ubicaciones }}</p>
+<p><strong>Productos nuevos:</strong> {{ resumen.productos_nuevos }}</p>
+<p><strong>Sin cambios:</strong> {{ resumen.sin_cambios }}</p> 
+    </div>
+    <form method="POST" action="/aplicar_cambios_excel">
+    <button type="submit">
+        ✅ Aplicar cambios
+    </button>
+</form>
+{% endif %} 
+
+        <a href="/admin">
+            ⬅ Volver al Panel de Administración
+        </a>
+
+    </div>
+
+</body>
+</html> 

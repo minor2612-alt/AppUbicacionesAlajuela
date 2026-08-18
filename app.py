@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 import unicodedata
 import pandas as pd
@@ -17,8 +18,10 @@ from sqlalchemy import (
     delete,
     func,
     insert,
+    inspect,
     or_,
     select,
+    text,
     update,
 )
 from werkzeug.security import check_password_hash, generate_password_hash 
@@ -56,6 +59,7 @@ productos = Table(
     Column("producto", String(250), nullable=False),
     Column("codigo", String(100), nullable=False),
     Column("codigo_barras", String(100), nullable=True),
+    Column("sucursal", String(100), nullable=False, server_default="Alajuela"),
     Column("ubicacion", String(150), nullable=False),
 )
 
@@ -85,6 +89,19 @@ def limpiar_texto(valor) -> str:
 
     return texto
 
+def asegurar_columna_sucursal() -> None:
+    inspector = inspect(engine)
+    columnas = {columna["name"] for columna in inspector.get_columns("productos")}
+
+    if "sucursal" not in columnas:
+        with engine.begin() as conexion:
+            conexion.execute(
+                text(
+                    "ALTER TABLE productos "
+                    "ADD COLUMN sucursal VARCHAR(100) "
+                    "NOT NULL DEFAULT 'Alajuela'"
+                )
+            ) 
 
 def crear_tablas_e_importar_excel() -> None:
     """
@@ -93,7 +110,7 @@ def crear_tablas_e_importar_excel() -> None:
     Si la tabla ya contiene productos, no vuelve a importarlos.
     """
     metadata.create_all(engine)
-
+    asegurar_columna_sucursal()
     with engine.begin() as conexion:
         importacion = conexion.execute(
             select(configuracion.c.valor).where(
@@ -387,6 +404,246 @@ def inventario():
         tabla=tabla,
         buscar=buscar,
     )
+@app.route("/actualizar_excel", methods=["GET", "POST"])
+def actualizar_excel():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    mensaje = ""
+    resumen = None
+
+    if request.method == "POST":
+        archivo = request.files.get("archivo")
+
+        if not archivo or not archivo.filename:
+            mensaje = "Debe seleccionar un archivo de Excel."
+
+        else:
+            try:
+                sufijo = Path(archivo.filename).suffix.lower()
+
+                temporal = tempfile.NamedTemporaryFile(delete=False, suffix=sufijo)
+                ruta_temporal = temporal.name
+                temporal.close()
+                archivo.save(ruta_temporal)
+                session["excel_temporal"] = ruta_temporal
+                df = pd.read_excel(ruta_temporal, dtype=str)
+                # Limpia y uniforma los nombres de las columnas.
+                df.columns = [
+                    str(columna).strip().upper()
+                    for columna in df.columns
+                ]
+
+                # Acepta diferentes formas de escribir los encabezados.
+                df = df.rename(
+                    columns={
+                        "CÓDIGO": "CODIGO",
+                        "CÓDIGO DE BARRAS": "CODIGO_BARRAS",
+                        "CODIGO DE BARRAS": "CODIGO_BARRAS",
+                        "CÓDIGO_BARRAS": "CODIGO_BARRAS",
+                        "UBICACIÓN": "UBICACION",
+                    }
+                )
+
+                columnas_necesarias = {
+                    "PRODUCTO",
+                    "CODIGO",
+                    "CODIGO_BARRAS",
+                    "UBICACION",
+                    "SUCURSAL",
+                }
+
+                faltantes = columnas_necesarias.difference(df.columns)
+
+                if faltantes:
+                    mensaje = (
+                        "Al archivo le faltan estas columnas: "
+                        + ", ".join(sorted(faltantes))
+                    )
+
+                else:
+                    resumen = {
+                        "filas": len(df),
+                        "columnas": list(df.columns),
+                        "existentes": 0,
+                        "nuevas_ubicaciones": 0,
+                        "productos_nuevos": 0,
+                        "sin_cambios": 0,
+                    }
+
+                    with engine.begin() as conexion:
+                        for _, fila in df.iterrows():
+                            codigo = limpiar_texto(fila.get("CODIGO"))
+                            ubicacion = limpiar_texto(fila.get("UBICACION"))
+                            sucursal = (
+                                limpiar_texto(fila.get("SUCURSAL"))
+                                or "Alajuela"
+                            )
+
+                            if not codigo or not ubicacion:
+                                continue
+
+                            filas_existentes = conexion.execute(
+                                select(
+                                    productos.c.codigo,
+                                    productos.c.ubicacion,
+                                    productos.c.sucursal,
+                                ).where(
+                                    func.lower(productos.c.codigo)
+                                    == codigo.lower()
+                                )
+                            ).fetchall()
+
+                            if not filas_existentes:
+                                resumen["productos_nuevos"] += 1
+                                continue
+
+                            resumen["existentes"] += 1
+
+                            misma_ubicacion = any(
+                                limpiar_texto(
+                                    fila_db.ubicacion
+                                ).lower()
+                                == ubicacion.lower()
+                                and limpiar_texto(
+                                    fila_db.sucursal
+                                ).lower()
+                                == sucursal.lower()
+                                for fila_db in filas_existentes
+                            )
+
+                            if misma_ubicacion:
+                                resumen["sin_cambios"] += 1
+                            else:
+                                resumen["nuevas_ubicaciones"] += 1
+
+                    mensaje = (
+                        f"Archivo leído correctamente. "
+                        f"Se encontraron {len(df)} filas."
+                    )
+
+            except Exception as error:
+                mensaje = f"No se pudo leer el archivo: {error}"
+
+    return render_template(
+        "actualizar_excel.html",
+        mensaje=mensaje,
+        resumen=resumen,
+    ) 
+@app.route("/aplicar_cambios_excel", methods=["POST"])
+def aplicar_cambios_excel():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    ruta_temporal = session.get("excel_temporal")
+
+    if not ruta_temporal or not os.path.exists(ruta_temporal):
+        return render_template(
+            "actualizar_excel.html",
+            mensaje="No hay un archivo revisado para aplicar.",
+            resumen=None,
+        )
+
+    agregadas = 0
+    nuevos = 0
+    sin_cambios = 0
+
+    try:
+        df = pd.read_excel(ruta_temporal, dtype=str)
+
+        df.columns = [
+            str(columna).strip().upper()
+            for columna in df.columns
+        ]
+
+        df = df.rename(
+            columns={
+                "CÓDIGO": "CODIGO",
+                "CÓDIGO DE BARRAS": "CODIGO_BARRAS",
+                "CODIGO DE BARRAS": "CODIGO_BARRAS",
+                "CÓDIGO_BARRAS": "CODIGO_BARRAS",
+                "UBICACIÓN": "UBICACION",
+            }
+        )
+
+        with engine.begin() as conexion:
+            for _, fila in df.iterrows():
+                producto = limpiar_texto(fila.get("PRODUCTO"))
+                codigo = limpiar_texto(fila.get("CODIGO"))
+                codigo_barras = limpiar_texto(
+                    fila.get("CODIGO_BARRAS")
+                )
+                ubicacion = limpiar_texto(fila.get("UBICACION"))
+                sucursal = (
+                    limpiar_texto(fila.get("SUCURSAL"))
+                    or "Alajuela"
+                )
+
+                if not producto or not codigo or not ubicacion:
+                    continue
+
+                existentes = conexion.execute(
+                    select(productos).where(
+                        func.lower(productos.c.codigo)
+                        == codigo.lower()
+                    )
+                ).fetchall()
+
+                misma_ubicacion = any(
+                    limpiar_texto(
+                        registro.ubicacion
+                    ).lower() == ubicacion.lower()
+                    and limpiar_texto(
+                        registro.sucursal
+                    ).lower() == sucursal.lower()
+                    for registro in existentes
+                )
+
+                if misma_ubicacion:
+                    sin_cambios += 1
+                    continue
+
+                conexion.execute(
+                    insert(productos).values(
+                        producto=producto,
+                        codigo=codigo,
+                        codigo_barras=codigo_barras,
+                        sucursal=sucursal,
+                        ubicacion=ubicacion,
+                    )
+                )
+
+                if existentes:
+                    agregadas += 1
+                else:
+                    nuevos += 1
+
+        mensaje = (
+            f"Cambios aplicados correctamente. "
+            f"Nuevas ubicaciones: {agregadas}. "
+            f"Productos nuevos: {nuevos}. "
+            f"Sin cambios: {sin_cambios}."
+        )
+
+        session.pop("excel_temporal", None)
+
+        try:
+            os.remove(ruta_temporal)
+        except OSError:
+            pass
+
+        return render_template(
+            "actualizar_excel.html",
+            mensaje=mensaje,
+            resumen=None,
+        )
+
+    except Exception as error:
+        return render_template(
+            "actualizar_excel.html",
+            mensaje=f"No se pudieron aplicar los cambios: {error}",
+            resumen=None,
+        ) 
 
 
 @app.route("/nuevo", methods=["GET", "POST"])
