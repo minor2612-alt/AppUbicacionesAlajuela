@@ -480,7 +480,7 @@ def actualizar_excel():
                                 or "Alajuela"
                             )
 
-                            if not codigo or not ubicacion:
+                            if sucursal.strip().lower() != "alajuela" or not codigo or not ubicacion:
                                 continue
 
                             filas_existentes = conexion.execute(
@@ -579,7 +579,7 @@ def aplicar_cambios_excel():
                     or "Alajuela"
                 )
 
-                if not producto or not codigo or not ubicacion:
+                if sucursal.strip().lower() != "alajuela" or not producto or not codigo or not ubicacion:
                     continue
 
                 existentes = conexion.execute(
