@@ -24,7 +24,7 @@ from sqlalchemy import (
     text,
     update,
 )
-from werkzeug.security import check_password_hash, generate_password_hash 
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 
@@ -101,7 +101,7 @@ def asegurar_columna_sucursal() -> None:
                     "ADD COLUMN sucursal VARCHAR(100) "
                     "NOT NULL DEFAULT 'Alajuela'"
                 )
-            ) 
+            )
 
 def crear_tablas_e_importar_excel() -> None:
     """
@@ -187,7 +187,7 @@ def quitar_acentos(texto: str) -> str:
     return "".join(
         c for c in unicodedata.normalize("NFD", texto)
         if unicodedata.category(c) != "Mn"
-    ) 
+    )
 def variantes_singular_plural(texto: str) -> list[str]:
     texto = texto.strip().lower()
 
@@ -232,7 +232,7 @@ def variantes_singular_plural(texto: str) -> list[str]:
         palabras_variantes = palabras[:-1] + [variante_ultima]
         variantes.append(" ".join(palabras_variantes))
 
-    return variantes 
+    return variantes
 
 def buscar_productos(texto: str = "") -> list[dict]:
     texto = texto.strip()
@@ -270,7 +270,7 @@ def buscar_productos(texto: str = "") -> list[dict]:
     with engine.connect() as conexion:
         filas = conexion.execute(consulta).mappings().all()
 
-    return [dict(fila) for fila in filas] 
+    return [dict(fila) for fila in filas]
 
 
 def crear_tabla_html(filas: list[dict]) -> str:
@@ -309,7 +309,7 @@ def crear_tabla_html(filas: list[dict]) -> str:
 
         tarjetas.append(tarjeta)
 
-    return '<div class="lista-resultados">' + "".join(tarjetas) + "</div>" 
+    return '<div class="lista-resultados">' + "".join(tarjetas) + "</div>"
 
 
 
@@ -384,11 +384,11 @@ def cambiar_password():
             mensaje = "Las contraseñas nuevas no coinciden."
         else:
             os.environ["ADMIN_PASSWORD"] = nueva
-            
+           
             ADMIN_PASSWORD = nueva
             mensaje = "Contraseña cambiada correctamente."
 
-    return render_template("cambiar_password.html", mensaje=mensaje) 
+    return render_template("cambiar_password.html", mensaje=mensaje)
 
 @app.route("/inventario")
 def inventario():
@@ -529,7 +529,7 @@ def actualizar_excel():
         "actualizar_excel.html",
         mensaje=mensaje,
         resumen=resumen,
-    ) 
+    )
 @app.route("/aplicar_cambios_excel", methods=["POST"])
 def aplicar_cambios_excel():
     if not session.get("admin"):
@@ -643,7 +643,7 @@ def aplicar_cambios_excel():
             "actualizar_excel.html",
             mensaje=f"No se pudieron aplicar los cambios: {error}",
             resumen=None,
-        ) 
+        )
 
 
 @app.route("/nuevo", methods=["GET", "POST"])
@@ -654,7 +654,7 @@ def nuevo():
     if request.method == "POST":
         producto = request.form.get("producto", "").strip()
         codigo = request.form.get("codigo", "").strip()
-        codigo_barras = request.form.get("codigo_barras", "").strip() 
+        codigo_barras = request.form.get("codigo_barras", "").strip()
         ubicacion = request.form.get("ubicacion", "").strip()
 
         if not producto or not codigo or not ubicacion:
@@ -685,118 +685,151 @@ def editar():
     if not session.get("admin"):
         return redirect(url_for("login"))
 
-    if request.method == "POST":
-        codigo_buscar = request.form.get("codigo_buscar", "").strip()
-        id_registro = request.form.get("id_registro", "").strip()
+    if request.method == "GET":
+        return render_template("editar.html")
 
-        producto_nuevo = request.form.get("producto", "").strip()
-        codigo_nuevo = request.form.get("codigo", "").strip()
-        codigo_barras_nuevo = request.form.get("codigo_barras", "").strip()
-        ubicacion_nueva = request.form.get("ubicacion", "").strip()
+    codigo_buscar = request.form.get("codigo_buscar", "").strip()
+    accion = request.form.get("accion", "buscar").strip()
 
-        if not codigo_buscar:
+    producto_masivo = request.form.get("producto_masivo", "").strip()
+    codigo_masivo = request.form.get("codigo_masivo", "").strip()
+    codigo_barras_masivo = request.form.get("codigo_barras_masivo", "").strip()
+    sucursal_masiva = request.form.get("sucursal_masiva", "").strip()
+
+    if not codigo_buscar:
+        return render_template(
+            "editar.html",
+            error="Debe escribir el código que desea editar.",
+        )
+
+    with engine.begin() as conexion:
+        coincidencias = conexion.execute(
+            select(
+                productos.c.id,
+                productos.c.producto,
+                productos.c.codigo,
+                productos.c.codigo_barras,
+                productos.c.ubicacion,
+                productos.c.sucursal,
+            ).where(
+                func.lower(productos.c.codigo) == codigo_buscar.lower(),
+                func.lower(productos.c.sucursal) == "alajuela",
+            )
+        ).mappings().all()
+
+        if not coincidencias:
             return render_template(
                 "editar.html",
-                error="Debe escribir el código que desea editar.",
+                error="No existe ese código en la sucursal Alajuela.",
+                codigo_buscar=codigo_buscar,
             )
 
-        with engine.begin() as conexion:
-            coincidencias = conexion.execute(
-                select(
-                    productos.c.id,
-                    productos.c.producto,
-                    productos.c.codigo,
-                    productos.c.ubicacion,
-                ).where(
-                    func.lower(productos.c.codigo)
-                    == codigo_buscar.lower()
-                )
-            ).mappings().all()
+        # Primera etapa: mostramos todas las ubicaciones encontradas.
+        if accion != "guardar":
+            return render_template(
+                "editar.html",
+                coincidencias=coincidencias,
+                codigo_buscar=codigo_buscar,
+            )
 
-            if not coincidencias:
+        # Segunda etapa: recibimos las filas marcadas para modificar.
+        ids_seleccionados = request.form.getlist("ids_seleccionados")
+
+        if not ids_seleccionados:
+            return render_template(
+                "editar.html",
+                error="Debe seleccionar al menos una ubicación para editar.",
+                coincidencias=coincidencias,
+                codigo_buscar=codigo_buscar,
+            )
+
+        try:
+            ids_seleccionados = [int(id_registro) for id_registro in ids_seleccionados]
+        except ValueError:
+            return render_template(
+                "editar.html",
+                error="La selección contiene un registro no válido.",
+                coincidencias=coincidencias,
+                codigo_buscar=codigo_buscar,
+            )
+
+        ids_validos = {fila["id"] for fila in coincidencias}
+
+        if not set(ids_seleccionados).issubset(ids_validos):
+            return render_template(
+                "editar.html",
+                error="Una de las filas seleccionadas no corresponde a ese código.",
+                coincidencias=coincidencias,
+                codigo_buscar=codigo_buscar,
+            )
+
+        cambios_masivos = {}
+        if producto_masivo:
+            cambios_masivos["producto"] = producto_masivo
+        if codigo_masivo:
+            cambios_masivos["codigo"] = codigo_masivo
+        if codigo_barras_masivo:
+            cambios_masivos["codigo_barras"] = codigo_barras_masivo
+        if sucursal_masiva:
+            cambios_masivos["sucursal"] = sucursal_masiva
+
+        for fila in coincidencias:
+            id_registro = fila["id"]
+
+            if id_registro not in ids_seleccionados:
+                continue
+
+            producto_nuevo = request.form.get(f"producto_{id_registro}", "").strip()
+            codigo_nuevo = request.form.get(f"codigo_{id_registro}", "").strip()
+            codigo_barras_nuevo = request.form.get(
+                f"codigo_barras_{id_registro}", ""
+            ).strip()
+            ubicacion_nueva = request.form.get(
+                f"ubicacion_{id_registro}", ""
+            ).strip()
+            sucursal_nueva = request.form.get(
+                f"sucursal_{id_registro}", ""
+            ).strip()
+
+            # Si se escribió un valor masivo, ese valor se aplica a todas
+            # las filas seleccionadas. Los campos masivos vacíos conservan
+            # el valor individual de cada tarjeta.
+            producto_nuevo = cambios_masivos.get("producto", producto_nuevo)
+            codigo_nuevo = cambios_masivos.get("codigo", codigo_nuevo)
+            codigo_barras_nuevo = cambios_masivos.get(
+                "codigo_barras", codigo_barras_nuevo
+            )
+            sucursal_nueva = cambios_masivos.get("sucursal", sucursal_nueva)
+
+            if (
+                not producto_nuevo
+                or not codigo_nuevo
+                or not ubicacion_nueva
+                or not sucursal_nueva
+            ):
                 return render_template(
                     "editar.html",
-                    error="No existe ese código.",
-                    codigo_buscar=codigo_buscar,
-                )
-
-            # Si existen varias ubicaciones y todavía no se ha
-            # seleccionado una fila, mostramos la lista.
-            if len(coincidencias) > 1 and not id_registro:
-                return render_template(
-                    "editar.html",
+                    error=(
+                        "Producto, código, ubicación y sucursal "
+                        "no pueden quedar vacíos."
+                    ),
                     coincidencias=coincidencias,
-                    codigo_buscar=codigo_buscar,
-                    producto=producto_nuevo,
-                    codigo=codigo_nuevo,
-                    ubicacion=ubicacion_nueva,
-                )
-
-            # Si se seleccionó una fila, buscamos ese ID exacto.
-            if id_registro:
-                try:
-                    id_seleccionado = int(id_registro)
-                except ValueError:
-                    return render_template(
-                        "editar.html",
-                        error="La selección no es válida.",
-                        coincidencias=coincidencias,
-                        codigo_buscar=codigo_buscar,
-                    )
-
-                fila = next(
-                    (
-                        registro
-                        for registro in coincidencias
-                        if registro["id"] == id_seleccionado
-                    ),
-                    None,
-                )
-
-                if fila is None:
-                    return render_template(
-                        "editar.html",
-                        error="El registro seleccionado no corresponde a ese código.",
-                        coincidencias=coincidencias,
-                        codigo_buscar=codigo_buscar,
-                    )
-            else:
-                # Si solamente existe una coincidencia.
-                fila = coincidencias[0]
-
-            cambios = {}
-
-            if producto_nuevo:
-                cambios["producto"] = producto_nuevo
-
-            if codigo_nuevo:
-                cambios["codigo"] = codigo_nuevo
-            if codigo_barras_nuevo:
-                cambios["codigo_barras"] = codigo_barras_nuevo
-            if ubicacion_nueva:
-                cambios["ubicacion"] = ubicacion_nueva
-
-            if not cambios:
-                return render_template(
-                    "editar.html",
-                    error="Debe escribir al menos un dato nuevo.",
-                    coincidencias=(
-                        coincidencias
-                        if len(coincidencias) > 1
-                        else None
-                    ),
                     codigo_buscar=codigo_buscar,
                 )
 
             conexion.execute(
                 update(productos)
-                .where(productos.c.id == fila["id"])
-                .values(**cambios)
+                .where(productos.c.id == id_registro)
+                .values(
+                    producto=producto_nuevo,
+                    codigo=codigo_nuevo,
+                    codigo_barras=codigo_barras_nuevo or None,
+                    ubicacion=ubicacion_nueva,
+                    sucursal=sucursal_nueva,
+                )
             )
 
-        return redirect(url_for("admin"))
-
-    return render_template("editar.html")
+    return redirect(url_for("admin"))
 
 
 @app.route("/eliminar", methods=["GET", "POST"])
@@ -872,11 +905,11 @@ def eliminar():
     delete(productos).where(
         productos.c.id == fila["id"]
     )
-) 
+)
 
         return redirect(url_for("admin"))
 
-    return render_template("eliminar.html") 
+    return render_template("eliminar.html")
 @app.route("/eliminar_ubicacion", methods=["GET", "POST"])
 def eliminar_ubicacion():
     if not session.get("admin"):
@@ -991,7 +1024,7 @@ def eliminar_ubicacion():
     delete(productos).where(
         productos.c.id == fila["id"]
     )
-) 
+)
 
             codigo_modificado = fila["codigo"]
 
@@ -1018,12 +1051,12 @@ def eliminar_ubicacion():
             mensaje=(
     f"Se eliminó el registro con código "
     f"{codigo_modificado} correctamente."
-), 
+),
             coincidencias=coincidencias_restantes,
             ubicacion_buscar=ubicacion_buscar,
         )
 
-    return render_template("eliminar_ubicacion.html") 
+    return render_template("eliminar_ubicacion.html")
 
 
 
@@ -1034,4 +1067,4 @@ def logout():
 
 
 if __name__ == "__main__":
-    app.run(debug=True) 
+    app.run(debug=True)
