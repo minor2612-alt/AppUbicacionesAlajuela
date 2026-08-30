@@ -14,6 +14,7 @@
                     type="radio"
                     name="id_registro"
                     value="{{ fila.id }}"
+                    {% if id_registro and id_registro|int == fila.id %}checked{% endif %}
                     required
                 >
 

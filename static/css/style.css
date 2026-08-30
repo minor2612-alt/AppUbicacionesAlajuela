@@ -338,3 +338,17 @@ th {
         width: 100%;
     }
 } 
+.acciones-admin {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.accion-admin {
+    width: auto;
+    min-width: 130px;
+    padding: 10px 18px;
+    text-align: center;
+} 

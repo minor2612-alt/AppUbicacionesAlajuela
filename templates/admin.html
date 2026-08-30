@@ -16,6 +16,54 @@
 
     <h1>Construplaza</h1>
     <h2>Panel de Administración</h2>
+<div class="buscador-admin">
+    <form action="/admin" method="GET">
+        <input
+            type="text"
+            name="buscar"
+            placeholder="Buscar producto, código o código de barras"
+            value="{{ buscar or '' }}"
+            required
+        >
+        <button type="submit" class="boton">
+            🔍 Buscar producto
+        </button>
+    </form>
+</div>
+
+{% if buscar %}
+    <div class="resultados-admin">
+
+        {% if resultados %}
+            <h3>Resultados encontrados</h3>
+
+            {% for fila in resultados %}
+    <div class="tarjeta-admin">
+        <strong>{{ fila.producto }}</strong><br>
+        Código: {{ fila.codigo }}<br>
+        Código de barras: {{ fila.codigo_barras or '-' }}<br>
+        📍 Ubicación: {{ fila.ubicacion }}<br><br>
+
+        <div class="acciones-admin">
+    <a class="boton accion-admin" href="{{ url_for('editar', codigo=fila.codigo) }}">
+        ✏️ Editar
+    </a>
+
+    <a class="boton accion-admin" href="{{ url_for('eliminar', codigo=fila.codigo, id=fila.id) }}">
+        🗑️ Eliminar
+    </a>
+</div> 
+
+    </div>
+{% endfor %} 
+
+
+        {% else %}
+            <p>No se encontraron productos.</p>
+        {% endif %}
+
+    </div>
+{% endif %} 
 
     <div class="opciones">
     <a class="boton" href="/nuevo">➕ Agregar producto</a>

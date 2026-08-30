@@ -363,7 +363,17 @@ def admin():
     if not session.get("admin"):
         return redirect(url_for("login"))
 
-    return render_template("admin.html")
+    buscar = request.args.get("buscar", "").strip()
+    resultados = []
+
+    if buscar:
+        resultados = buscar_productos(buscar)
+
+    return render_template(
+        "admin.html",
+        buscar=buscar,
+        resultados=resultados,
+    ) 
 
 @app.route("/cambiar_password", methods=["GET", "POST"])
 def cambiar_password():
@@ -686,7 +696,39 @@ def editar():
         return redirect(url_for("login"))
 
     if request.method == "GET":
+     codigo_buscar = request.args.get("codigo", "").strip()
+ 
+    if not codigo_buscar:
         return render_template("editar.html")
+
+    with engine.connect() as conexion:
+        coincidencias = conexion.execute(
+            select(
+                productos.c.id,
+                productos.c.producto,
+                productos.c.codigo,
+                productos.c.codigo_barras,
+                productos.c.ubicacion,
+                productos.c.sucursal,
+            ).where(
+                func.lower(productos.c.codigo) == codigo_buscar.lower(),
+                func.lower(productos.c.sucursal) == "alajuela",
+            )
+        ).mappings().all()
+
+    if not coincidencias:
+        return render_template(
+            "editar.html",
+            error="No existe ese código en la sucursal Alajuela.",
+            codigo_buscar=codigo_buscar,
+        )
+
+    return render_template(
+        "editar.html",
+        coincidencias=coincidencias,
+        codigo_buscar=codigo_buscar,
+    ) 
+
 
     codigo_buscar = request.form.get("codigo_buscar", "").strip()
     accion = request.form.get("accion", "buscar").strip()
@@ -866,7 +908,6 @@ def eliminar():
                     codigo=codigo,
                 )
 
-            # Primera etapa: mostrar todos los registros encontrados.
             if not id_registro:
                 return render_template(
                     "eliminar.html",
@@ -902,14 +943,45 @@ def eliminar():
                 )
 
             conexion.execute(
-    delete(productos).where(
-        productos.c.id == fila["id"]
-    )
-)
+                delete(productos).where(
+                    productos.c.id == fila["id"]
+                )
+            )
 
         return redirect(url_for("admin"))
 
-    return render_template("eliminar.html")
+    codigo = request.args.get("codigo", "").strip()
+    id_registro = request.args.get("id", "").strip()
+
+    if not codigo:
+        return render_template("eliminar.html")
+
+    with engine.connect() as conexion:
+        coincidencias = conexion.execute(
+            select(
+                productos.c.id,
+                productos.c.producto,
+                productos.c.codigo,
+                productos.c.ubicacion,
+            ).where(
+                func.lower(productos.c.codigo) == codigo.lower()
+            )
+        ).mappings().all()
+
+    if not coincidencias:
+        return render_template(
+            "eliminar.html",
+            error="No existe un producto con ese código.",
+            codigo=codigo,
+        )
+
+    return render_template(
+        "eliminar.html",
+        coincidencias=coincidencias,
+        codigo=codigo,
+        id_registro=id_registro,
+    ) 
+
 @app.route("/eliminar_ubicacion", methods=["GET", "POST"])
 def eliminar_ubicacion():
     if not session.get("admin"):
