@@ -695,47 +695,50 @@ def editar():
     if not session.get("admin"):
         return redirect(url_for("login"))
 
+    # Entrada directa desde el buscador de Administración.
     if request.method == "GET":
-     codigo_buscar = request.args.get("codigo", "").strip()
- 
-    if not codigo_buscar:
-        return render_template("editar.html")
+        codigo_buscar = request.args.get("codigo", "").strip()
 
-    with engine.connect() as conexion:
-        coincidencias = conexion.execute(
-            select(
-                productos.c.id,
-                productos.c.producto,
-                productos.c.codigo,
-                productos.c.codigo_barras,
-                productos.c.ubicacion,
-                productos.c.sucursal,
-            ).where(
-                func.lower(productos.c.codigo) == codigo_buscar.lower(),
-                func.lower(productos.c.sucursal) == "alajuela",
+        if not codigo_buscar:
+            return render_template("editar.html")
+
+        with engine.connect() as conexion:
+            coincidencias = conexion.execute(
+                select(
+                    productos.c.id,
+                    productos.c.producto,
+                    productos.c.codigo,
+                    productos.c.codigo_barras,
+                    productos.c.ubicacion,
+                    productos.c.sucursal,
+                ).where(
+                    func.lower(productos.c.codigo) == codigo_buscar.lower(),
+                    func.lower(productos.c.sucursal) == "alajuela",
+                )
+            ).mappings().all()
+
+        if not coincidencias:
+            return render_template(
+                "editar.html",
+                error="No existe ese código en la sucursal Alajuela.",
+                codigo_buscar=codigo_buscar,
             )
-        ).mappings().all()
 
-    if not coincidencias:
         return render_template(
             "editar.html",
-            error="No existe ese código en la sucursal Alajuela.",
+            coincidencias=coincidencias,
             codigo_buscar=codigo_buscar,
         )
 
-    return render_template(
-        "editar.html",
-        coincidencias=coincidencias,
-        codigo_buscar=codigo_buscar,
-    ) 
-
-
+    # Desde aquí continúa únicamente el POST.
     codigo_buscar = request.form.get("codigo_buscar", "").strip()
     accion = request.form.get("accion", "buscar").strip()
 
     producto_masivo = request.form.get("producto_masivo", "").strip()
     codigo_masivo = request.form.get("codigo_masivo", "").strip()
-    codigo_barras_masivo = request.form.get("codigo_barras_masivo", "").strip()
+    codigo_barras_masivo = request.form.get(
+        "codigo_barras_masivo", ""
+    ).strip()
     sucursal_masiva = request.form.get("sucursal_masiva", "").strip()
 
     if not codigo_buscar:
@@ -786,7 +789,10 @@ def editar():
             )
 
         try:
-            ids_seleccionados = [int(id_registro) for id_registro in ids_seleccionados]
+            ids_seleccionados = [
+                int(id_registro)
+                for id_registro in ids_seleccionados
+            ]
         except ValueError:
             return render_template(
                 "editar.html",
@@ -800,18 +806,25 @@ def editar():
         if not set(ids_seleccionados).issubset(ids_validos):
             return render_template(
                 "editar.html",
-                error="Una de las filas seleccionadas no corresponde a ese código.",
+                error=(
+                    "Una de las filas seleccionadas "
+                    "no corresponde a ese código."
+                ),
                 coincidencias=coincidencias,
                 codigo_buscar=codigo_buscar,
             )
 
         cambios_masivos = {}
+
         if producto_masivo:
             cambios_masivos["producto"] = producto_masivo
+
         if codigo_masivo:
             cambios_masivos["codigo"] = codigo_masivo
+
         if codigo_barras_masivo:
             cambios_masivos["codigo_barras"] = codigo_barras_masivo
+
         if sucursal_masiva:
             cambios_masivos["sucursal"] = sucursal_masiva
 
@@ -821,27 +834,45 @@ def editar():
             if id_registro not in ids_seleccionados:
                 continue
 
-            producto_nuevo = request.form.get(f"producto_{id_registro}", "").strip()
-            codigo_nuevo = request.form.get(f"codigo_{id_registro}", "").strip()
+            producto_nuevo = request.form.get(
+                f"producto_{id_registro}", ""
+            ).strip()
+
+            codigo_nuevo = request.form.get(
+                f"codigo_{id_registro}", ""
+            ).strip()
+
             codigo_barras_nuevo = request.form.get(
                 f"codigo_barras_{id_registro}", ""
             ).strip()
+
             ubicacion_nueva = request.form.get(
                 f"ubicacion_{id_registro}", ""
             ).strip()
+
             sucursal_nueva = request.form.get(
                 f"sucursal_{id_registro}", ""
             ).strip()
 
-            # Si se escribió un valor masivo, ese valor se aplica a todas
-            # las filas seleccionadas. Los campos masivos vacíos conservan
-            # el valor individual de cada tarjeta.
-            producto_nuevo = cambios_masivos.get("producto", producto_nuevo)
-            codigo_nuevo = cambios_masivos.get("codigo", codigo_nuevo)
-            codigo_barras_nuevo = cambios_masivos.get(
-                "codigo_barras", codigo_barras_nuevo
+            producto_nuevo = cambios_masivos.get(
+                "producto",
+                producto_nuevo,
             )
-            sucursal_nueva = cambios_masivos.get("sucursal", sucursal_nueva)
+
+            codigo_nuevo = cambios_masivos.get(
+                "codigo",
+                codigo_nuevo,
+            )
+
+            codigo_barras_nuevo = cambios_masivos.get(
+                "codigo_barras",
+                codigo_barras_nuevo,
+            )
+
+            sucursal_nueva = cambios_masivos.get(
+                "sucursal",
+                sucursal_nueva,
+            )
 
             if (
                 not producto_nuevo
@@ -871,7 +902,8 @@ def editar():
                 )
             )
 
-    return redirect(url_for("admin"))
+    return redirect(url_for("admin")) 
+
 
 
 @app.route("/eliminar", methods=["GET", "POST"])
