@@ -352,3 +352,20 @@ th {
     padding: 10px 18px;
     text-align: center;
 } 
+.boton-whatsapp {
+    display: block;
+    width: 100%;
+    margin-top: 15px;
+    padding: 12px;
+    background-color: #25D366;
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    font-weight: bold;
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+.boton-whatsapp:hover {
+    background-color: #1ebe5d;
+} 

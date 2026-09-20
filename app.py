@@ -6,8 +6,10 @@ from pathlib import Path
 import unicodedata
 import pandas as pd
 from html import escape
+from urllib.parse import quote
 from flask import Flask, redirect, render_template, request, session, jsonify, url_for, send_from_directory
 from sqlalchemy import (
+ 
     Column,
     Integer,
     MetaData,
@@ -287,7 +289,12 @@ def crear_tabla_html(filas: list[dict]) -> str:
         producto = escape(str(fila.get("producto", "")))
         codigo = escape(str(fila.get("codigo", "")))
         ubicacion = escape(str(fila.get("ubicacion", "")))
-
+        mensaje_whatsapp = (
+            f"Producto: {producto}\n"
+            f"Código: {codigo}\n"
+            f"Ubicación: {ubicacion}"
+        )
+        enlace_whatsapp = f"https://wa.me/50686928249?text={quote(mensaje_whatsapp)}"
         tarjeta = f"""
         <article class="tarjeta-producto">
             <div class="dato-producto">
@@ -304,6 +311,11 @@ def crear_tabla_html(filas: list[dict]) -> str:
                 <span class="etiqueta">📍 Ubicación</span>
                 <span class="valor ubicacion">{ubicacion}</span>
             </div>
+            <a href="{enlace_whatsapp}"
+               target="_blank"
+               class="boton-whatsapp">
+                📱 Enviar por WhatsApp
+            </a> 
         </article>
         """
 
