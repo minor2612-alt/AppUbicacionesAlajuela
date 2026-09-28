@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuarios - Construplaza</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, sans-serif; background: #f3f4f6; color: #333; }
+        .cabecera { background: linear-gradient(135deg, #f36c12, #e9560b); color: white; padding: 24px 16px; text-align: center; }
+        .cabecera h1 { margin: 0 0 6px; }
+        .contenedor { max-width: 900px; margin: 22px auto; padding: 0 14px 30px; }
+        .tarjeta { background: white; border-radius: 16px; padding: 20px; margin-bottom: 18px; box-shadow: 0 3px 12px rgba(0,0,0,.10); }
+        h2 { color: #0b568c; margin-top: 0; }
+        label { display: block; font-weight: bold; margin-top: 12px; }
+        input[type=text], input[type=password] { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #bbb; border-radius: 9px; font-size: 16px; }
+        .permiso { display: flex; gap: 9px; align-items: center; margin: 11px 0; }
+        .permiso label { margin: 0; font-weight: normal; }
+        button, .boton { display: inline-block; border: 0; border-radius: 10px; padding: 12px 18px; text-decoration: none; font-weight: bold; cursor: pointer; }
+        .principal { background: #eb5b12; color: white; width: 100%; margin-top: 15px; font-size: 16px; }
+        .editar { background: #0b568c; color: white; }
+        .volver { background: #555; color: white; margin-bottom: 16px; }
+        .mensaje { padding: 12px; border-radius: 9px; margin-bottom: 15px; background: #e7f7ec; color: #176b32; }
+        .error { padding: 12px; border-radius: 9px; margin-bottom: 15px; background: #fde8e8; color: #9b1c1c; }
+        .usuario { border-top: 1px solid #ddd; padding: 16px 0; }
+        .usuario:first-of-type { border-top: 0; }
+        .estado { font-weight: bold; }
+        .permisos { color: #555; margin: 8px 0 12px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="cabecera">
+        <h1>👥 Administración de usuarios</h1>
+        <div>Construplaza · Sucursal Alajuela</div>
+    </div>
+
+    <div class="contenedor">
+        <a class="boton volver" href="{{ url_for('admin') }}">← Volver a Administración</a>
+
+        <div class="tarjeta">
+            <h2>➕ Crear nuevo usuario</h2>
+
+            {% if mensaje %}<div class="mensaje">{{ mensaje }}</div>{% endif %}
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+            <form method="post">
+                <label>Usuario</label>
+                <input type="text" name="usuario" required>
+
+                <label>Nombre</label>
+                <input type="text" name="nombre" required>
+
+                <label>Contraseña inicial</label>
+                <input type="password" name="password" required>
+
+                <h3>Permisos</h3>
+                <div class="permiso"><input type="checkbox" name="puede_agregar" id="pa"><label for="pa">Agregar productos</label></div>
+                <div class="permiso"><input type="checkbox" name="puede_editar" id="pe"><label for="pe">Editar productos</label></div>
+                <div class="permiso"><input type="checkbox" name="puede_eliminar" id="pel"><label for="pel">Eliminar productos</label></div>
+                <div class="permiso"><input type="checkbox" name="puede_eliminar_ubicacion" id="peu"><label for="peu">Eliminar ubicaciones</label></div>
+                <div class="permiso"><input type="checkbox" name="puede_actualizar_excel" id="pax"><label for="pax">Actualizar desde Excel</label></div>
+
+                <button class="principal" type="submit">Crear usuario</button>
+            </form>
+        </div>
+
+        <div class="tarjeta">
+            <h2>👤 Usuarios registrados</h2>
+            {% if usuarios_lista %}
+                {% for u in usuarios_lista %}
+                    <div class="usuario">
+                        <strong>{{ u.nombre }}</strong> — {{ u.usuario }}
+                        <div class="estado">
+                            {% if u.activo %}🟢 Activo{% else %}🔴 Inactivo{% endif %}
+                            {% if u.es_superadmin %} · ⭐ Superadministrador{% endif %}
+                        </div>
+                        <div class="permisos">
+                            Permisos:
+                            {% if u.es_superadmin %}Todos
+                            {% else %}
+                                {% if u.puede_agregar %}Agregar · {% endif %}
+                                {% if u.puede_editar %}Editar · {% endif %}
+                                {% if u.puede_eliminar %}Eliminar · {% endif %}
+                                {% if u.puede_eliminar_ubicacion %}Eliminar ubicación · {% endif %}
+                                {% if u.puede_actualizar_excel %}Actualizar Excel{% endif %}
+                            {% endif %}
+                        </div>
+                        <a class="boton editar" href="{{ url_for('editar_usuario', usuario_id=u.id) }}">Editar usuario y permisos</a>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>No hay usuarios registrados.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

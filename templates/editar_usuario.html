@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar usuario - Construplaza</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f3f4f6;
+            color: #333;
+        }
+
+        .cabecera {
+            background: linear-gradient(135deg, #f36c12, #e9560b);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .contenedor {
+            max-width: 650px;
+            margin: 25px auto;
+            padding: 0 15px 30px;
+        }
+
+        .tarjeta {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+        }
+
+        h2 {
+            color: #0b568c;
+            margin-top: 0;
+        }
+
+        label {
+            display: block;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            margin-top: 6px;
+            border: 1px solid #bbb;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .permiso {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 14px 0;
+        }
+
+        .permiso label {
+            margin: 0;
+            font-weight: normal;
+        }
+
+        button {
+            width: 100%;
+            border: 0;
+            border-radius: 9px;
+            padding: 13px;
+            margin-top: 20px;
+            background: #eb5b12;
+            color: white;
+            font-size: 17px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .volver {
+            display: block;
+            text-align: center;
+            margin-top: 18px;
+            color: #0b568c;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        .nota {
+            background: #fff4df;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="cabecera">
+    <h1>Construplaza</h1>
+    <div>Administración de usuarios</div>
+</div>
+
+<div class="contenedor">
+
+    <div class="tarjeta">
+
+        <h2>👤 Editar usuario</h2>
+
+        <form method="POST">
+
+            <label>Usuario</label>
+            <input
+                type="text"
+                value="{{ usuario.usuario }}"
+                disabled
+            >
+
+            <label>Nombre</label>
+            <input
+                type="text"
+                name="nombre"
+                value="{{ usuario.nombre }}"
+                required
+            >
+
+            <label>Nueva contraseña</label>
+            <input
+                type="password"
+                name="password"
+                placeholder="Dejar vacío para conservar la actual"
+            >
+
+            {% if usuario.es_superadmin %}
+
+                <div class="nota">
+                    ⭐ Este usuario es el superadministrador y conserva todos los permisos.
+                </div>
+
+            {% else %}
+
+                <h3>Permisos</h3>
+
+                <div class="permiso">
+                    <input
+                        type="checkbox"
+                        name="activo"
+                        id="activo"
+                        {% if usuario.activo %}checked{% endif %}
+                    >
+                    <label for="activo">Usuario activo</label>
+                </div>
+
+                <div class="permiso">
+                    <input
+                        type="checkbox"
+                        name="puede_agregar"
+                        id="puede_agregar"
+                        {% if usuario.puede_agregar %}checked{% endif %}
+                    >
+                    <label for="puede_agregar">Agregar productos</label>
+                </div>
+
+                <div class="permiso">
+                    <input
+                        type="checkbox"
+                        name="puede_editar"
+                        id="puede_editar"
+                        {% if usuario.puede_editar %}checked{% endif %}
+                    >
+                    <label for="puede_editar">Editar productos</label>
+                </div>
+
+                <div class="permiso">
+                    <input
+                        type="checkbox"
+                        name="puede_eliminar"
+                        id="puede_eliminar"
+                        {% if usuario.puede_eliminar %}checked{% endif %}
+                    >
+                    <label for="puede_eliminar">Eliminar productos</label>
+                </div>
+
+                <div class="permiso">
+                    <input
+                        type="checkbox"
+                        name="puede_eliminar_ubicacion"
+                        id="puede_eliminar_ubicacion"
+                        {% if usuario.puede_eliminar_ubicacion %}checked{% endif %}
+                    >
+                    <label for="puede_eliminar_ubicacion">
+                        Eliminar ubicaciones
+                    </label>
+                </div>
+
+                <div class="permiso">
+                    <input
+                        type="checkbox"
+                        name="puede_actualizar_excel"
+                        id="puede_actualizar_excel"
+                        {% if usuario.puede_actualizar_excel %}checked{% endif %}
+                    >
+                    <label for="puede_actualizar_excel">
+                        Actualizar desde Excel
+                    </label>
+                </div>
+
+            {% endif %}
+
+            <button type="submit">
+                💾 Guardar cambios
+            </button>
+
+        </form>
+
+        <a class="volver" href="{{ url_for('gestionar_usuarios') }}">
+            ← Volver a usuarios
+        </a>
+
+    </div>
+
+</div>
+
+</body>
+</html> 

@@ -10,7 +10,9 @@ from urllib.parse import quote
 from flask import Flask, redirect, render_template, request, session, jsonify, url_for, send_from_directory
 from sqlalchemy import (
  
+    Boolean,
     Column,
+    DateTime,
     Integer,
     MetaData,
     String,
@@ -70,6 +72,43 @@ configuracion = Table(
     metadata,
     Column("clave", String(100), primary_key=True),
     Column("valor", Text, nullable=False),
+)
+
+# Etapa 1 del sistema de usuarios y permisos.
+# Estas tablas se crean sin modificar todavía el login administrativo actual.
+usuarios = Table(
+    "usuarios",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("usuario", String(100), nullable=False, unique=True),
+    Column("nombre", String(150), nullable=False),
+    Column("password_hash", String(255), nullable=False),
+    Column("activo", Boolean, nullable=False, server_default=text("true")),
+    Column("es_superadmin", Boolean, nullable=False, server_default=text("false")),
+    Column("puede_agregar", Boolean, nullable=False, server_default=text("false")),
+    Column("puede_editar", Boolean, nullable=False, server_default=text("false")),
+    Column("puede_eliminar", Boolean, nullable=False, server_default=text("false")),
+    Column("puede_eliminar_ubicacion", Boolean, nullable=False, server_default=text("false")),
+    Column("puede_actualizar_excel", Boolean, nullable=False, server_default=text("false")),
+    Column("creado_en", DateTime, nullable=False, server_default=func.now()),
+)
+
+historial_cambios = Table(
+    "historial_cambios",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("usuario_id", Integer, nullable=True),
+    # Se guarda también el nombre del usuario para conservar la trazabilidad
+    # aunque posteriormente esa cuenta sea desactivada o eliminada.
+    Column("usuario", String(100), nullable=False),
+    Column("accion", String(100), nullable=False),
+    Column("entidad", String(100), nullable=False),
+    Column("registro_id", Integer, nullable=True),
+    Column("codigo", String(100), nullable=True),
+    Column("datos_antes", Text, nullable=True),
+    Column("datos_despues", Text, nullable=True),
+    Column("detalle", Text, nullable=True),
+    Column("fecha_hora", DateTime, nullable=False, server_default=func.now()),
 )
 
 
@@ -358,8 +397,36 @@ def login():
         usuario = request.form.get("usuario", "").strip()
         password = request.form.get("password", "").strip()
 
+        # Primero comprobamos el administrador principal
         if usuario == ADMIN_USER and password == ADMIN_PASSWORD:
             session["admin"] = True
+            session["usuario"] = ADMIN_USER
+            session["es_superadmin"] = True
+            return redirect(url_for("admin"))
+
+        # Después comprobamos los usuarios creados
+        with engine.connect() as conexion:
+            usuario_db = conexion.execute(
+                select(usuarios).where(
+                    func.lower(usuarios.c.usuario) == usuario.lower()
+                )
+            ).mappings().first()
+
+        if (
+            usuario_db
+            and usuario_db["activo"]
+            and check_password_hash(usuario_db["password_hash"], password)
+        ):
+            session["admin"] = True
+            session["usuario"] = usuario_db["usuario"]
+            session["usuario_id"] = usuario_db["id"]
+            session["es_superadmin"] = usuario_db["es_superadmin"]
+            session["puede_agregar"] = usuario_db["puede_agregar"]
+            session["puede_editar"] = usuario_db["puede_editar"]
+            session["puede_eliminar"] = usuario_db["puede_eliminar"]
+            session["puede_eliminar_ubicacion"] = usuario_db["puede_eliminar_ubicacion"]
+            session["puede_actualizar_excel"] = usuario_db["puede_actualizar_excel"]
+
             return redirect(url_for("admin"))
 
         return render_template(
@@ -367,7 +434,8 @@ def login():
             error="Usuario o contraseña incorrectos.",
         )
 
-    return render_template("login.html")
+    return render_template("login.html") 
+
 
 
 @app.route("/admin")
@@ -430,7 +498,8 @@ def inventario():
 def actualizar_excel():
     if not session.get("admin"):
         return redirect(url_for("login"))
-
+    if not session.get("es_superadmin") and not session.get("puede_actualizar_excel"):
+        return redirect(url_for("admin"))
     mensaje = ""
     resumen = None
 
@@ -706,7 +775,8 @@ def nuevo():
 def editar():
     if not session.get("admin"):
         return redirect(url_for("login"))
-
+    if not session.get("es_superadmin") and not session.get("puede_editar"):
+        return redirect(url_for("admin"))
     # Entrada directa desde el buscador de Administración.
     if request.method == "GET":
         codigo_buscar = request.args.get("codigo", "").strip()
@@ -922,7 +992,8 @@ def editar():
 def eliminar():
     if not session.get("admin"):
         return redirect(url_for("login"))
-
+    if not session.get("es_superadmin") and not session.get("puede_eliminar"):
+        return redirect(url_for("admin"))
     if request.method == "POST":
         codigo = request.form.get("codigo", "").strip()
         id_registro = request.form.get("id_registro", "").strip()
@@ -1030,7 +1101,8 @@ def eliminar():
 def eliminar_ubicacion():
     if not session.get("admin"):
         return redirect(url_for("login"))
-
+    if not session.get("es_superadmin") and not session.get("puede_eliminar_ubicacion"):
+        return redirect(url_for("admin"))
     if request.method == "POST":
         ubicacion_buscar = request.form.get(
             "ubicacion_buscar",
@@ -1174,6 +1246,134 @@ def eliminar_ubicacion():
 
     return render_template("eliminar_ubicacion.html")
 
+
+
+@app.route("/usuarios", methods=["GET", "POST"])
+def gestionar_usuarios():
+    """Lista y crea usuarios con permisos. Solo disponible para el administrador principal."""
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    mensaje = ""
+    error = ""
+
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip()
+        nombre = request.form.get("nombre", "").strip()
+        password = request.form.get("password", "").strip()
+
+        if not usuario or not nombre or not password:
+            error = "Usuario, nombre y contraseña son obligatorios."
+        else:
+            with engine.begin() as conexion:
+                existente = conexion.execute(
+                    select(usuarios.c.id).where(
+                        func.lower(usuarios.c.usuario) == usuario.lower()
+                    )
+                ).scalar_one_or_none()
+
+                if existente is not None:
+                    error = "Ese nombre de usuario ya existe."
+                else:
+                    conexion.execute(
+                        insert(usuarios).values(
+                            usuario=usuario,
+                            nombre=nombre,
+                            password_hash=generate_password_hash(password),
+                            activo=True,
+                            es_superadmin=False,
+                            puede_agregar=request.form.get("puede_agregar") == "on",
+                            puede_editar=request.form.get("puede_editar") == "on",
+                            puede_eliminar=request.form.get("puede_eliminar") == "on",
+                            puede_eliminar_ubicacion=(
+                                request.form.get("puede_eliminar_ubicacion") == "on"
+                            ),
+                            puede_actualizar_excel=(
+                                request.form.get("puede_actualizar_excel") == "on"
+                            ),
+                        )
+                    )
+                    mensaje = "Usuario creado correctamente."
+
+    with engine.connect() as conexion:
+        lista_usuarios = conexion.execute(
+            select(
+                usuarios.c.id,
+                usuarios.c.usuario,
+                usuarios.c.nombre,
+                usuarios.c.activo,
+                usuarios.c.es_superadmin,
+                usuarios.c.puede_agregar,
+                usuarios.c.puede_editar,
+                usuarios.c.puede_eliminar,
+                usuarios.c.puede_eliminar_ubicacion,
+                usuarios.c.puede_actualizar_excel,
+            ).order_by(usuarios.c.usuario)
+        ).mappings().all()
+
+    return render_template(
+        "usuarios.html",
+        mensaje=mensaje,
+        error=error,
+        usuarios_lista=lista_usuarios,
+    ) 
+
+
+@app.route("/usuarios/<int:usuario_id>/editar", methods=["GET", "POST"])
+def editar_usuario(usuario_id):
+    """Consulta o actualiza permisos de un usuario. No permite desactivar al superadmin."""
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    with engine.begin() as conexion:
+        fila = conexion.execute(
+            select(usuarios).where(usuarios.c.id == usuario_id)
+        ).mappings().first()
+
+        if fila is None:
+            return jsonify({"error": "Usuario no encontrado."}), 404
+
+        if request.method == "POST":
+            nombre = request.form.get("nombre", "").strip() or fila["nombre"]
+            password = request.form.get("password", "").strip()
+            es_superadmin = bool(fila["es_superadmin"])
+
+            valores = {
+                "nombre": nombre,
+                "activo": True if es_superadmin else request.form.get("activo") == "on",
+                "puede_agregar": True if es_superadmin else request.form.get("puede_agregar") == "on",
+                "puede_editar": True if es_superadmin else request.form.get("puede_editar") == "on",
+                "puede_eliminar": True if es_superadmin else request.form.get("puede_eliminar") == "on",
+                "puede_eliminar_ubicacion": (
+                    True if es_superadmin
+                    else request.form.get("puede_eliminar_ubicacion") == "on"
+                ),
+                "puede_actualizar_excel": (
+                    True if es_superadmin
+                    else request.form.get("puede_actualizar_excel") == "on"
+                ),
+            }
+
+            if password:
+                valores["password_hash"] = generate_password_hash(password)
+
+            conexion.execute(
+                update(usuarios)
+                .where(usuarios.c.id == usuario_id)
+                .values(**valores)
+            )
+
+            fila = conexion.execute(
+                select(usuarios).where(usuarios.c.id == usuario_id)
+            ).mappings().first()
+
+    usuario = dict(fila)
+    usuario.pop("password_hash", None)
+
+    return render_template(
+    "editar_usuario.html",
+    usuario=usuario,
+) 
 
 
 @app.route("/logout")

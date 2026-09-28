@@ -66,13 +66,27 @@
 {% endif %} 
 
     <div class="opciones">
-    <a class="boton" href="/nuevo">➕ Agregar producto</a>
-    <a class="boton" href="/editar">✏️ Editar producto</a>
-    <a class="boton" href="/eliminar">🗑 Eliminar producto</a>
-    <a class="boton" href="/eliminar_ubicacion">📦 Eliminar ubicación</a>
+    {% if session.get("es_superadmin") or session.get("puede_agregar") %}
+<a class="boton" href="/nuevo">➕ Agregar producto</a>
+{% endif %}
+    {% if session.get("es_superadmin") or session.get("puede_editar") %}
+<a class="boton" href="/editar">📝 Editar producto</a>
+{% endif %}
+    {% if session.get("es_superadmin") or session.get("puede_eliminar") %}
+<a class="boton" href="/eliminar">🗑️ Eliminar producto</a>
+{% endif %}
+    {% if session.get("es_superadmin") or session.get("puede_eliminar_ubicacion") %}
+<a class="boton" href="/eliminar_ubicacion">📦 Eliminar ubicación</a>
+{% endif %}
     <a class="boton" href="/inventario">📋 Ver inventario</a>
-    <a class="boton" href="/actualizar_excel">📊 Actualizar desde Excel</a>
+    {% if session.get("es_superadmin") or session.get("puede_actualizar_excel") %}
+<a class="boton" href="/actualizar_excel">📊 Actualizar desde Excel</a>
+{% endif %}
     <a class="boton" href="/cambiar_password">🔑 Cambiar contraseña</a>
+     {% if session.get("es_superadmin") %}
+<a class="boton" href="/usuarios">👥 Administrar usuarios</a>
+{% endif %}
+
 </div> 
 
     <a class="salir" href="/logout">🚪 Cerrar sesión</a>
