@@ -741,7 +741,8 @@ def aplicar_cambios_excel():
 def nuevo():
     if not session.get("admin"):
         return redirect(url_for("login"))
-
+    if not session.get("es_superadmin") and not session.get("puede_agregar"):
+        return redirect(url_for("admin")) 
     if request.method == "POST":
         producto = request.form.get("producto", "").strip()
         codigo = request.form.get("codigo", "").strip()
@@ -1253,7 +1254,8 @@ def gestionar_usuarios():
     """Lista y crea usuarios con permisos. Solo disponible para el administrador principal."""
     if not session.get("admin"):
         return redirect(url_for("login"))
-
+    if not session.get("es_superadmin"):
+     return redirect(url_for("admin"))
     mensaje = ""
     error = ""
 
@@ -1317,6 +1319,7 @@ def gestionar_usuarios():
         error=error,
         usuarios_lista=lista_usuarios,
     ) 
+         
 
 
 @app.route("/usuarios/<int:usuario_id>/editar", methods=["GET", "POST"])
@@ -1324,7 +1327,8 @@ def editar_usuario(usuario_id):
     """Consulta o actualiza permisos de un usuario. No permite desactivar al superadmin."""
     if not session.get("admin"):
         return redirect(url_for("login"))
-
+    if not session.get("es_superadmin"):
+        return redirect(url_for("admin"))
     with engine.begin() as conexion:
         fila = conexion.execute(
             select(usuarios).where(usuarios.c.id == usuario_id)
