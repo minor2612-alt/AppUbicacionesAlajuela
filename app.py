@@ -6,6 +6,7 @@ import secrets
 import tempfile
 from pathlib import Path
 import unicodedata
+from datetime import timezone, timedelta 
 import pandas as pd
 from html import escape
 from urllib.parse import quote
@@ -164,6 +165,10 @@ def historial():
     filas = []
     for movimiento in movimientos:
         fila = dict(movimiento)
+        if fila["fecha_hora"] is not None:
+            fila["fecha_hora"] = fila["fecha_hora"].replace(
+        tzinfo=timezone.utc
+    ).astimezone(timezone(timedelta(hours=-6)))
         fila["antes"] = foto_json(fila["datos_antes"])
         fila["despues"] = foto_json(fila["datos_despues"])
         filas.append(fila)
