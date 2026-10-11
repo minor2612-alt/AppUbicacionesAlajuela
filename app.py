@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import json
+import secrets
 import tempfile
 from pathlib import Path
 import unicodedata
@@ -110,6 +112,116 @@ historial_cambios = Table(
     Column("detalle", Text, nullable=True),
     Column("fecha_hora", DateTime, nullable=False, server_default=func.now()),
 )
+
+
+
+# Campos que se conservan para reconstruir exactamente un registro.
+CAMPOS_PRODUCTO = ("id", "producto", "codigo", "codigo_barras", "sucursal", "ubicacion")
+
+
+def foto_producto(fila):
+    return {campo: fila[campo] for campo in CAMPOS_PRODUCTO} if fila is not None else None
+
+
+def registrar_movimiento(conexion, accion, antes=None, despues=None, detalle="", entidad="producto"):
+    """El movimiento y el cambio de inventario se guardan en la MISMA transacción."""
+    foto = despues or antes or {}
+    conexion.execute(insert(historial_cambios).values(
+        usuario_id=session.get("usuario_id"),
+        usuario=session.get("usuario", ADMIN_USER),
+        accion=accion, entidad=entidad,
+        registro_id=foto.get("id"), codigo=foto.get("codigo"),
+        datos_antes=json.dumps(antes, ensure_ascii=False) if antes is not None else None,
+        datos_despues=json.dumps(despues, ensure_ascii=False) if despues is not None else None,
+        detalle=detalle,
+    ))
+
+
+def obtener_foto(conexion, registro_id):
+    fila = conexion.execute(select(productos).where(productos.c.id == registro_id)).mappings().first()
+    return foto_producto(fila)
+
+
+def foto_json(valor):
+    return json.loads(valor) if valor else None
+
+
+def es_admin_principal():
+    return bool(session.get("admin") and session.get("es_superadmin")
+                and session.get("usuario") == ADMIN_USER)
+
+
+@app.route("/historial")
+def historial():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    if not es_admin_principal():
+        return redirect(url_for("admin"))
+    with engine.connect() as conexion:
+        movimientos = conexion.execute(
+            select(historial_cambios).order_by(historial_cambios.c.id.desc()).limit(200)
+        ).mappings().all()
+    filas = []
+    for movimiento in movimientos:
+        fila = dict(movimiento)
+        fila["antes"] = foto_json(fila["datos_antes"])
+        fila["despues"] = foto_json(fila["datos_despues"])
+        filas.append(fila)
+    if "historial_csrf" not in session:
+        session["historial_csrf"] = secrets.token_urlsafe(32)
+    return render_template("historial.html", movimientos=filas,
+                           csrf=session["historial_csrf"],
+                           mensaje=request.args.get("mensaje", ""))
+
+
+@app.route("/historial/<int:movimiento_id>/revertir", methods=["POST"])
+def revertir_movimiento(movimiento_id):
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    if not es_admin_principal():
+        return redirect(url_for("admin"))
+    if not secrets.compare_digest(request.form.get("csrf", ""), session.get("historial_csrf", "")):
+        return redirect(url_for("historial", mensaje="Confirmación de seguridad inválida."))
+    # La comprobación y la reversión son atómicas. No se modifica ningún registro
+    # si hubo cambios posteriores sobre ese mismo producto.
+    with engine.begin() as conexion:
+        movimiento = conexion.execute(
+            select(historial_cambios).where(historial_cambios.c.id == movimiento_id).with_for_update()
+        ).mappings().first()
+        if movimiento is None or movimiento["entidad"] != "producto" or movimiento["accion"] not in ("agregar", "editar", "eliminar"):
+            return redirect(url_for("historial", mensaje="Este movimiento no admite reversión."))
+        antes = foto_json(movimiento["datos_antes"])
+        despues = foto_json(movimiento["datos_despues"])
+        registro_id = movimiento["registro_id"]
+        actual = obtener_foto(conexion, registro_id)
+        posterior = conexion.execute(select(historial_cambios.c.id).where(
+            historial_cambios.c.id > movimiento_id,
+            historial_cambios.c.entidad == "producto",
+            historial_cambios.c.registro_id == registro_id,
+        ).limit(1)).first()
+        if posterior:
+            return redirect(url_for("historial", mensaje="No se puede revertir: hay movimientos posteriores sobre este registro."))
+        if actual != despues:
+            return redirect(url_for("historial", mensaje="No se puede revertir: el registro cambió posteriormente o ya fue restaurado."))
+        # Impide reversiones dobles incluso cuando el registro continúa ausente.
+        reverso = conexion.execute(select(historial_cambios.c.id).where(
+            historial_cambios.c.accion == "reversion",
+            historial_cambios.c.entidad == "producto",
+            historial_cambios.c.detalle == f"Reversión del movimiento #{movimiento_id}",
+        )).first()
+        if reverso:
+            return redirect(url_for("historial", mensaje="Este movimiento ya fue revertido."))
+        if antes is None:
+            conexion.execute(delete(productos).where(productos.c.id == registro_id))
+        elif despues is None:
+            conexion.execute(insert(productos).values(**antes))
+        else:
+            conexion.execute(update(productos).where(productos.c.id == registro_id).values(
+                **{campo: antes[campo] for campo in CAMPOS_PRODUCTO if campo != "id"}
+            ))
+        registrar_movimiento(conexion, "reversion", antes=despues, despues=antes,
+                             detalle=f"Reversión del movimiento #{movimiento_id}")
+    return redirect(url_for("historial", mensaje="Movimiento revertido correctamente."))
 
 
 def limpiar_texto(valor) -> str:
@@ -694,7 +806,7 @@ def aplicar_cambios_excel():
                     sin_cambios += 1
                     continue
 
-                conexion.execute(
+                resultado = conexion.execute(
                     insert(productos).values(
                         producto=producto,
                         codigo=codigo,
@@ -703,6 +815,9 @@ def aplicar_cambios_excel():
                         ubicacion=ubicacion,
                     )
                 )
+                nuevo_id = resultado.inserted_primary_key[0]
+                registrar_movimiento(conexion, "agregar", despues=obtener_foto(conexion, nuevo_id),
+                                     detalle="Importación desde Excel")
 
                 if existentes:
                     agregadas += 1
@@ -758,7 +873,7 @@ def nuevo():
         # Se permiten códigos repetidos porque un mismo producto
         # puede estar en varias ubicaciones.
         with engine.begin() as conexion:
-            conexion.execute(
+            resultado = conexion.execute(
                 insert(productos).values(
                     producto=producto,
                     codigo=codigo,
@@ -766,6 +881,8 @@ def nuevo():
                     ubicacion=ubicacion,
                 )
             )
+            nuevo_id = resultado.inserted_primary_key[0]
+            registrar_movimiento(conexion, "agregar", despues=obtener_foto(conexion, nuevo_id))
 
         return redirect(url_for("admin"))
 
@@ -973,6 +1090,7 @@ def editar():
                     codigo_buscar=codigo_buscar,
                 )
 
+            foto_antes = obtener_foto(conexion, id_registro)
             conexion.execute(
                 update(productos)
                 .where(productos.c.id == id_registro)
@@ -984,6 +1102,9 @@ def editar():
                     sucursal=sucursal_nueva,
                 )
             )
+            foto_despues = obtener_foto(conexion, id_registro)
+            if foto_antes != foto_despues:
+                registrar_movimiento(conexion, "editar", antes=foto_antes, despues=foto_despues)
 
     return redirect(url_for("admin")) 
 
@@ -1058,11 +1179,13 @@ def eliminar():
                     codigo=codigo,
                 )
 
+            foto_antes = obtener_foto(conexion, fila["id"])
             conexion.execute(
                 delete(productos).where(
                     productos.c.id == fila["id"]
                 )
             )
+            registrar_movimiento(conexion, "eliminar", antes=foto_antes)
 
         return redirect(url_for("admin"))
 
@@ -1153,6 +1276,7 @@ def eliminar_ubicacion():
 
             if accion == "eliminar_toda":
                 cantidad = len(coincidencias)
+                fotos_eliminadas = [obtener_foto(conexion, fila["id"]) for fila in coincidencias]
 
                 conexion.execute(
                     delete(productos).where(
@@ -1160,6 +1284,9 @@ def eliminar_ubicacion():
                         == ubicacion_buscar.lower()
                     )
                 )
+                for foto in fotos_eliminadas:
+                    registrar_movimiento(conexion, "eliminar", antes=foto,
+                                         detalle="Eliminación de ubicación completa")
 
                 return render_template(
                     "eliminar_ubicacion.html",
@@ -1209,11 +1336,12 @@ def eliminar_ubicacion():
                     ubicacion_buscar=ubicacion_buscar,
                 )
 
+            foto_antes = obtener_foto(conexion, fila["id"])
             conexion.execute(
-    delete(productos).where(
-        productos.c.id == fila["id"]
-    )
-)
+                delete(productos).where(productos.c.id == fila["id"])
+            )
+            registrar_movimiento(conexion, "eliminar", antes=foto_antes,
+                                 detalle="Eliminación desde ubicación")
 
             codigo_modificado = fila["codigo"]
 

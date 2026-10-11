@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Historial de movimientos · Construplaza</title>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f3f5f8;color:#1e2b3d}header{background:#ed751e;color:white;padding:20px}main{max-width:1100px;margin:20px auto;padding:0 12px}a{color:#13528a}.notice{padding:12px;background:#fff1d5;border-radius:8px;margin:12px 0}.item{background:white;border-radius:10px;padding:16px;margin:12px 0;box-shadow:0 1px 4px #0002}small{color:#596678}.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}.cols pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fa;padding:10px;border-radius:6px;font-size:12px}button{background:#c45114;color:white;border:0;border-radius:6px;padding:10px 14px;cursor:pointer}button:disabled{background:#aaa;cursor:default}@media(max-width:600px){.cols{grid-template-columns:1fr}}
+</style></head><body><header><h2>Construplaza · Historial de movimientos</h2></header>
+<main><p><a href="{{ url_for('admin') }}">← Volver a administración</a></p>
+{% if mensaje %}<p class="notice">{{ mensaje }}</p>{% endif %}
+<p>Se muestran los últimos 200 movimientos. Solo el administrador principal puede consultar y revertir.</p>
+{% for m in movimientos %}<section class="item">
+<strong>#{{ m.id }} · {{ m.accion|capitalize }}</strong> — {{ m.entidad }}
+<p><small>{{ m.fecha_hora }} · Usuario: {{ m.usuario }} · Código: {{ m.codigo or '—' }} · Registro: {{ m.registro_id or '—' }}</small></p>
+{% if m.detalle %}<p>{{ m.detalle }}</p>{% endif %}
+<div class="cols"><div><b>Antes</b><pre>{{ m.antes | tojson(indent=2) if m.antes is not none else 'Sin registro' }}</pre></div><div><b>Después</b><pre>{{ m.despues | tojson(indent=2) if m.despues is not none else 'Sin registro' }}</pre></div></div>
+{% if m.entidad == 'producto' and m.accion in ('agregar','editar','eliminar') %}
+<form action="{{ url_for('revertir_movimiento', movimiento_id=m.id) }}" method="post" onsubmit="return confirm('¿Confirma que desea revertir este movimiento? Se verificará que no haya cambios posteriores.');">
+<input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">↶ Revertir movimiento</button></form>
+{% endif %}
+</section>{% else %}<p>Todavía no hay movimientos registrados.</p>{% endfor %}
+</main></body></html>
