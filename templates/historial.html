@@ -9,7 +9,8 @@ body{font-family:Arial,sans-serif;margin:0;background:#f3f5f8;color:#1e2b3d}head
 <p>Se muestran los últimos 200 movimientos. Solo el administrador principal puede consultar y revertir.</p>
 {% for m in movimientos %}<section class="item">
 <strong>#{{ m.id }} · {{ m.accion|capitalize }}</strong> — {{ m.entidad }}
-<p><small>{{ m.fecha_hora }} · Usuario: {{ m.usuario }} · Código: {{ m.codigo or '—' }} · Registro: {{ m.registro_id or '—' }}</small></p>
+<p><small>{{ m.fecha_hora.strftime('%d/%m/%Y — %I:%M %p').replace('AM', 'a. m.').replace('PM', 'p. m.').lstrip('0') }} 
+ · Usuario: {{ m.usuario }} · Código: {{ m.codigo or '—' }} · Registro: {{ m.registro_id or '—' }}</small></p>
 {% if m.detalle %}<p>{{ m.detalle }}</p>{% endif %}
 <div class="cols"><div><b>Antes</b><pre>{{ m.antes | tojson(indent=2) if m.antes is not none else 'Sin registro' }}</pre></div><div><b>Después</b><pre>{{ m.despues | tojson(indent=2) if m.despues is not none else 'Sin registro' }}</pre></div></div>
 {% if m.entidad == 'producto' and m.accion in ('agregar','editar','eliminar') %}
