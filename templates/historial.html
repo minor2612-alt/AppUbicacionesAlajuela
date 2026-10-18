@@ -7,6 +7,25 @@ body{font-family:Arial,sans-serif;margin:0;background:#f3f5f8;color:#1e2b3d}head
 <main><p><a href="{{ url_for('admin') }}">← Volver a administración</a></p>
 {% if mensaje %}<p class="notice">{{ mensaje }}</p>{% endif %}
 <p>Se muestran los últimos 200 movimientos. Solo el administrador principal puede consultar y revertir.</p>
+<form method="get" action="{{ url_for('historial') }}">
+    <label for="codigo">Buscar por código:</label>
+    <input type="text" id="codigo" name="codigo"
+           value="{{ codigo_filtro }}" placeholder="Código del producto">
+           <label for="usuario">Buscar por usuario:</label>
+<input type="text" id="usuario" name="usuario"
+       value="{{ usuario_filtro }}" placeholder="Nombre del usuario">
+       <label for="accion">Tipo de movimiento:</label>
+<select id="accion" name="accion">
+    <option value="">Todos</option>
+    <option value="agregar" {% if accion_filtro == 'agregar' %}selected{% endif %}>Agregar</option>
+    <option value="editar" {% if accion_filtro == 'editar' %}selected{% endif %}>Editar</option>
+    <option value="eliminar" {% if accion_filtro == 'eliminar' %}selected{% endif %}>Eliminar</option>
+    <option value="reversion" {% if accion_filtro == 'reversion' %}selected{% endif %}>Reversión</option>
+</select> 
+    <button type="su
+    bmit">Buscar</button>
+    <a href="{{ url_for('historial') }}">Limpiar filtro</a>
+</form> 
 {% for m in movimientos %}<section class="item">
 <strong>#{{ m.id }} · {{ m.accion|capitalize }}</strong> — {{ m.entidad }}
 <p><small>{{ m.fecha_hora.strftime('%d/%m/%Y — %I:%M %p').replace('AM', 'a. m.').replace('PM', 'p. m.').lstrip('0') }} 

@@ -158,9 +158,22 @@ def historial():
         return redirect(url_for("login"))
     if not es_admin_principal():
         return redirect(url_for("admin"))
+    codigo_filtro = request.args.get("codigo", "").strip()
+    usuario_filtro = request.args.get("usuario", "").strip() 
+    accion_filtro = request.args.get("accion", "").strip().lower() 
+
+    consulta = select(historial_cambios)
+
+    if codigo_filtro:
+      consulta = consulta.where(historial_cambios.c.codigo.ilike(f"%{codigo_filtro}%"))
+    if usuario_filtro:
+      consulta = consulta.where(historial_cambios.c.usuario.ilike(f"%{usuario_filtro}%"))
+    if accion_filtro:
+        consulta = consulta.where(historial_cambios.c.accion == accion_filtro)
     with engine.connect() as conexion:
         movimientos = conexion.execute(
-            select(historial_cambios).order_by(historial_cambios.c.id.desc()).limit(200)
+            consulta.order_by(historial_cambios.c.id.desc()).limit(200) 
+
         ).mappings().all()
     filas = []
     for movimiento in movimientos:
@@ -175,6 +188,10 @@ def historial():
     if "historial_csrf" not in session:
         session["historial_csrf"] = secrets.token_urlsafe(32)
     return render_template("historial.html", movimientos=filas,
+                           codigo_filtro=codigo_filtro, 
+                           usuario_filtro=usuario_filtro,
+                           accion_filtro=accion_filtro, 
+
                            csrf=session["historial_csrf"],
                            mensaje=request.args.get("mensaje", ""))
 
