@@ -448,7 +448,8 @@ def buscar_productos(texto: str = "") -> list[dict]:
     return [dict(fila) for fila in filas]
 
 
-def crear_tabla_html(filas: list[dict]) -> str:
+def crear_tabla_html(filas: list[dict], mostrar_eliminar=False) -> str: 
+
     if not filas:
         return """
         <div class="sin-resultados">
@@ -462,6 +463,21 @@ def crear_tabla_html(filas: list[dict]) -> str:
         producto = escape(str(fila.get("producto", "")))
         codigo = escape(str(fila.get("codigo", "")))
         ubicacion = escape(str(fila.get("ubicacion", "")))
+        
+        registro_id = fila.get("id") 
+        boton_eliminar = ""
+
+        if mostrar_eliminar and registro_id is not None:
+            boton_eliminar = f"""
+            <form method="POST"
+                  action="/eliminar_desde_inventario/{registro_id}"
+                  onsubmit="return confirm('¿Está seguro de eliminar este artículo?');">
+                <button type="submit"
+                        style="background:#c62828;color:white;padding:10px;border:0;border-radius:5px;cursor:pointer;">
+                    🗑️ Eliminar artículo
+                </button>
+            </form>
+            """ 
         mensaje_whatsapp = (
             f"Producto: {producto}\n"
             f"Código: {codigo}\n"
@@ -489,6 +505,7 @@ def crear_tabla_html(filas: list[dict]) -> str:
                class="boton-whatsapp">
                 📱 Enviar por WhatsApp
             </a> 
+        {boton_eliminar}
         </article>
         """
 
@@ -621,7 +638,8 @@ def inventario():
 
     buscar = request.args.get("buscar", "").strip()
     filas = buscar_productos(buscar)
-    tabla = crear_tabla_html(filas)
+    tabla = crear_tabla_html(filas, mostrar_eliminar=session.get("es_superadmin", False)) 
+
 
     return render_template(
         "inventario.html",
@@ -1534,6 +1552,31 @@ def editar_usuario(usuario_id):
 def logout():
     session.pop("admin", None)
     return redirect(url_for("inicio"))
+
+@app.route("/eliminar_desde_inventario/<int:registro_id>", methods=["POST"])
+def eliminar_desde_inventario(registro_id):
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    if not session.get("es_superadmin"):
+        return redirect(url_for("admin"))
+    with engine.begin() as conexion:
+        foto_antes = obtener_foto(conexion, registro_id)
+
+        if foto_antes is None:
+            return redirect(url_for("inventario"))
+
+        conexion.execute(
+                delete(productos).where(productos.c.id == registro_id)
+            )
+        registrar_movimiento(
+                conexion, "eliminar", antes=foto_antes
+            )
+
+    return redirect(url_for("inventario")) 
+
+
+
 
 
 if __name__ == "__main__":
