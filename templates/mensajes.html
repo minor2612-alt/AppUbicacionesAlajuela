@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Administrar mensajes | Construplaza</title>
+<style>
+body{font-family:Arial,sans-serif;background:#fff6ec;color:#342617;margin:0}header{background:#ec6c00;color:white;padding:20px;text-align:center}main{max-width:920px;margin:auto;padding:18px}section{background:white;border:1px solid #f3c89d;border-radius:12px;padding:18px;margin:16px 0;box-shadow:0 2px 8px #0001}label{display:block;font-weight:bold;margin:12px 0 5px}input,textarea,select{box-sizing:border-box;width:100%;padding:11px;border:1px solid #d4bca5;border-radius:7px;font:inherit}textarea{min-height:76px}button,.link{background:#e86a00;color:white;border:0;border-radius:7px;padding:10px 14px;cursor:pointer;text-decoration:none;display:inline-block;margin:6px 4px 0 0}.secondary{background:#69523f}.danger{background:#b92727}.dates{display:grid;grid-template-columns:1fr 1fr;gap:14px}.check{display:flex;gap:8px;align-items:center}.check input{width:auto}small{color:#665e56}.error{color:#a00000}@media(max-width:550px){.dates{grid-template-columns:1fr}}
+</style></head><body><header><h1>📢 Administrar mensajes</h1><p>Construplaza · Solo administrador principal</p></header><main>
+<a class="link secondary" href="{{ url_for('admin') }}">← Volver al panel</a>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<section><h2>Crear nuevo mensaje</h2>
+<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="accion" value="crear">
+<label>Título</label><input name="titulo" maxlength="120" required placeholder="🎄 ¡Felices fiestas!">
+<label>Mensaje</label><textarea name="contenido" maxlength="500" required></textarea>
+<label>Dónde aparece</label><select name="tipo"><option value="recuadro">Recuadro rotativo</option><option value="cinta">Franja en movimiento</option><option value="ambos">Ambos lugares</option></select>
+<div class="dates"><div><label>Desde (opcional)</label><input type="date" name="inicio"></div><div><label>Hasta (opcional)</label><input type="date" name="fin"></div></div>
+<label class="check"><input type="checkbox" name="activo" checked> Publicar / activar</label><button type="submit">Guardar mensaje</button></form></section>
+<h2>Mensajes guardados</h2>
+{% for m in mensajes %}<section><form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ m.id }}"><input type="hidden" name="accion" value="editar">
+<label>Título</label><input name="titulo" maxlength="120" value="{{ m.titulo }}" required>
+<label>Mensaje</label><textarea name="contenido" maxlength="500" required>{{ m.contenido }}</textarea>
+<label>Dónde aparece</label><select name="tipo"><option value="recuadro" {% if m.tipo=='recuadro' %}selected{% endif %}>Recuadro rotativo</option><option value="cinta" {% if m.tipo=='cinta' %}selected{% endif %}>Franja en movimiento</option><option value="ambos" {% if m.tipo=='ambos' %}selected{% endif %}>Ambos lugares</option></select>
+<div class="dates"><div><label>Desde</label><input type="date" name="inicio" value="{{ m.inicio or '' }}"></div><div><label>Hasta</label><input type="date" name="fin" value="{{ m.fin or '' }}"></div></div>
+<label class="check"><input type="checkbox" name="activo" {% if m.activo %}checked{% endif %}> Activo</label><button type="submit">Guardar cambios</button></form>
+<form method="post" style="display:inline"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ m.id }}"><button name="accion" value="{{ 'desactivar' if m.activo else 'activar' }}" class="secondary">{{ 'Desactivar' if m.activo else 'Activar' }}</button></form>
+<form method="post" style="display:inline" onsubmit="return confirm('¿Eliminar definitivamente este mensaje?')"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ m.id }}"><button name="accion" value="eliminar" class="danger">Eliminar</button></form>
+</section>{% else %}<p>Todavía no hay mensajes guardados. Cree el primero arriba.</p>{% endfor %}
+</main></body></html>

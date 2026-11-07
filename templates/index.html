@@ -14,9 +14,42 @@
         rel="stylesheet"
         href="{{ url_for('static', filename='css/style.css') }}"
     >
+<style>
+/* Avisos Construplaza: estilos aislados para no alterar el buscador */
+.cp-avisos { margin: 14px auto 20px; max-width: 920px; font-family: inherit; }
+.cp-cinta { overflow: hidden; background: linear-gradient(90deg,#e66a00,#ff9b28); color: white; border-radius: 10px; padding: 11px 0; font-weight: 700; }
+.cp-cinta-texto { display: inline-block; white-space: nowrap; padding-left: 100%; animation: cp-deslizar 22s linear infinite; }
+@keyframes cp-deslizar { to { transform: translateX(-100%); } }
+.cp-cinta:hover .cp-cinta-texto { animation-play-state: paused; }
+.cp-tarjeta { margin-top: 12px; padding: 17px 20px; border: 1px solid #ffd4a3; border-left: 5px solid #ee7900; background: #fff9f1; border-radius: 12px; text-align: center; color: #57340e; min-height: 92px; box-sizing: border-box; }
+.cp-tarjeta h2 { margin: 0 0 7px; font-size: 1.15rem; color: #b94d00; }
+.cp-tarjeta p { margin: 0; line-height: 1.5; }
+.cp-puntos { display: flex; justify-content: center; gap: 7px; margin-top: 10px; }
+.cp-punto { width: 7px; height: 7px; border-radius: 50%; background: #eacbb0; }
+.cp-punto.activo { background: #e66a00; }
+@media (prefers-reduced-motion: reduce) { .cp-cinta-texto { animation: none; padding-left: 12px; white-space: normal; } }
+@media (max-width: 600px) { .cp-avisos { margin: 10px auto 14px; } .cp-tarjeta { padding: 13px; } }
+
+/* Decoración navideña: independiente de las funciones de la aplicación */
+.cp-navidad { display:none; pointer-events:none; position:fixed; inset:0; z-index:20; overflow:hidden; }
+.cp-navidad.visible { display:block; }
+.cp-luces { position:absolute; top:0; left:0; right:0; height:35px; display:flex; justify-content:space-around; align-items:flex-start; padding:0 8px; }
+.cp-bombillo { width:11px; height:17px; border-radius:45% 45% 55% 55%; background:var(--luz); box-shadow:0 0 9px 3px var(--luz); animation:cp-brillar 2.4s ease-in-out infinite alternate; animation-delay:var(--retardo); }
+.cp-bombillo::before { content:''; display:block; width:7px; height:5px; background:#53635b; margin:-4px auto 0; border-radius:2px; }
+@keyframes cp-brillar { from { opacity:.42; box-shadow:0 0 4px 1px var(--luz); } to { opacity:1; box-shadow:0 0 12px 4px var(--luz); } }
+.cp-nieve { position:absolute; top:-25px; left:var(--x); font-size:var(--tam); color:#e5f6ff; text-shadow:0 0 3px #426b85; opacity:.7; animation:cp-nevar var(--dur) linear infinite; animation-delay:var(--espera); }
+@keyframes cp-nevar { from { transform:translate3d(0,-30px,0) rotate(0); } to { transform:translate3d(35px,110vh,0) rotate(180deg); } }
+@media (prefers-reduced-motion:reduce) { .cp-bombillo,.cp-nieve { animation:none; } .cp-nieve { display:none; } }
+@media (max-width:600px) { .cp-luces { height:25px; } .cp-bombillo { width:8px; height:12px; } }
+</style>
 </head>
 
 <body>
+<div id="cp-navidad" class="cp-navidad" aria-hidden="true">
+  <div class="cp-luces" id="cp-luces"></div>
+  <div id="cp-nieve"></div>
+</div>
+
 
 <header class="encabezado">
     <img
@@ -31,6 +64,20 @@
 </header>
 
 <main class="contenedor">
+<!-- Los avisos se muestran solo en la portada, no durante una búsqueda. -->
+{% if not busqueda and avisos %}
+<section class="cp-avisos" aria-label="Mensajes para colaboradores">
+  <div class="cp-cinta" aria-label="Aviso destacado">
+    <span class="cp-cinta-texto" id="cp-cinta-texto">📢 Bienvenidos al Sistema de Ubicaciones de Construplaza · Consulte por nombre, código o ubicación</span>
+  </div>
+  <div class="cp-tarjeta" aria-live="off">
+    <h2 id="cp-titulo">📦 Consejo de inventario</h2>
+    <p id="cp-descripcion">Verifique siempre la ubicación del producto antes de buscarlo en el rack.</p>
+    <div class="cp-puntos" id="cp-puntos" aria-hidden="true"></div>
+  </div>
+</section>
+{% endif %}
+
 
     <h2>🔎 Buscar producto</h2>
 
@@ -143,5 +190,75 @@ campoBusqueda.value = codigoLimpio;
         navigator.serviceWorker.register("/service-worker.js");
     }
 </script> 
+<script>
+(function () {
+  const titulo = document.getElementById('cp-titulo');
+  const descripcion = document.getElementById('cp-descripcion');
+  const cinta = document.getElementById('cp-cinta-texto');
+  const puntos = document.getElementById('cp-puntos');
+  if (!titulo || !descripcion || !cinta || !puntos) return;
+  const avisos = {{ avisos | tojson }};
+  const rotativos = avisos.filter(m => m.tipo === 'recuadro' || m.tipo === 'ambos');
+  const cintas = avisos.filter(m => m.tipo === 'cinta' || m.tipo === 'ambos');
+  const tarjeta = document.querySelector('.cp-tarjeta');
+  const barra = document.querySelector('.cp-cinta');
+  if (!rotativos.length) tarjeta.style.display = 'none';
+  if (!cintas.length) barra.style.display = 'none';
+  if (cintas.length) cinta.textContent = cintas.map(m => m.titulo + ' · ' + m.contenido).join('     ✦     ');
+  let indice = 0;
+  rotativos.forEach((_, i) => {
+    const punto = document.createElement('span');
+    punto.className = 'cp-punto' + (i === 0 ? ' activo' : '');
+    puntos.appendChild(punto);
+  });
+  function mostrar() {
+    if (!rotativos.length) return;
+    titulo.textContent = rotativos[indice].titulo;
+    descripcion.textContent = rotativos[indice].contenido;
+    [...puntos.children].forEach((p, i) => p.classList.toggle('activo', i === indice));
+  }
+  mostrar();
+  if (rotativos.length > 1 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    window.setInterval(() => { indice = (indice + 1) % rotativos.length; mostrar(); }, 8000);
+  }
+})();
+</script>
+<script>
+/* Temporada: diciembre 1 a enero 6. Para probar hoy: agregar ?navidad=1 a la URL. */
+(function () {
+  const ahora = new Date();
+  const mes = ahora.getMonth() + 1;
+  const dia = ahora.getDate();
+  const temporada = mes === 12 || (mes === 1 && dia <= 6);
+  const params = new URLSearchParams(window.location.search);
+  const mostrar = params.get('navidad') === '1' || (temporada && params.get('navidad') !== '0');
+  if (!mostrar) return;
+  const capa = document.getElementById('cp-navidad');
+  const luces = document.getElementById('cp-luces');
+  const nieve = document.getElementById('cp-nieve');
+  if (!capa || !luces || !nieve) return;
+  capa.classList.add('visible');
+  const colores = ['#ffe27a','#ff6262','#8df3b2','#a5d9ff'];
+  for (let i=0; i<22; i++) {
+    const luz = document.createElement('span');
+    luz.className = 'cp-bombillo';
+    luz.style.setProperty('--luz', colores[i % colores.length]);
+    luz.style.setProperty('--retardo', ((i % 5) * .35) + 's');
+    luces.appendChild(luz);
+  }
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    for (let i=0; i<18; i++) {
+      const copo = document.createElement('span');
+      copo.className = 'cp-nieve';
+      copo.textContent = '❄';
+      copo.style.setProperty('--x', ((i * 37 + 11) % 98) + '%');
+      copo.style.setProperty('--tam', (9 + (i % 4) * 3) + 'px');
+      copo.style.setProperty('--dur', (12 + (i % 7) * 2) + 's');
+      copo.style.setProperty('--espera', (-i * 1.7) + 's');
+      nieve.appendChild(copo);
+    }
+  }
+})();
+</script>
 </body>
-</html> 
+</html>

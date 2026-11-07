@@ -116,6 +116,91 @@ historial_cambios = Table(
 
 
 
+# Mensajes visibles en la portada. Solo el administrador principal los gestiona.
+mensajes_portada = Table(
+    "mensajes_portada", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("titulo", String(120), nullable=False),
+    Column("contenido", String(500), nullable=False),
+    Column("tipo", String(20), nullable=False, server_default="recuadro"),
+    Column("activo", Boolean, nullable=False, server_default=text("true")),
+    Column("inicio", String(10), nullable=True),
+    Column("fin", String(10), nullable=True),
+)
+
+
+def avisos_publicados():
+    from datetime import date
+    hoy = date.today().isoformat()
+    with engine.connect() as conexion:
+        filas = conexion.execute(select(mensajes_portada).where(
+            mensajes_portada.c.activo.is_(True),
+            or_(mensajes_portada.c.inicio.is_(None), mensajes_portada.c.inicio <= hoy),
+            or_(mensajes_portada.c.fin.is_(None), mensajes_portada.c.fin >= hoy),
+        ).order_by(mensajes_portada.c.id)).mappings().all()
+    return [dict(f) for f in filas]
+
+
+@app.route("/mensajes", methods=["GET", "POST"])
+def administrar_mensajes():
+    from datetime import date
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    if not es_admin_principal():
+        return redirect(url_for("admin"))
+    if "mensajes_csrf" not in session:
+        session["mensajes_csrf"] = secrets.token_urlsafe(32)
+    error = ""
+    if request.method == "POST":
+        if not secrets.compare_digest(request.form.get("csrf", ""), session["mensajes_csrf"]):
+            return ("Solicitud no autorizada", 403)
+        accion = request.form.get("accion", "")
+        try:
+            mid = int(request.form.get("id", "0"))
+        except ValueError:
+            mid = 0
+        if accion in ("crear", "editar"):
+            titulo = request.form.get("titulo", "").strip()
+            contenido = request.form.get("contenido", "").strip()
+            tipo = request.form.get("tipo", "recuadro")
+            inicio = request.form.get("inicio", "").strip() or None
+            fin = request.form.get("fin", "").strip() or None
+            if not titulo or not contenido or len(titulo) > 120 or len(contenido) > 500:
+                error = "Complete título y mensaje (máximo 120 y 500 caracteres)."
+            elif tipo not in ("cinta", "recuadro", "ambos"):
+                error = "Tipo de mensaje no válido."
+            else:
+                try:
+                    if inicio: date.fromisoformat(inicio)
+                    if fin: date.fromisoformat(fin)
+                    if inicio and fin and inicio > fin:
+                        raise ValueError("Fechas invertidas")
+                except ValueError:
+                    error = "Revise las fechas de publicación."
+            if not error:
+                valores = dict(titulo=titulo, contenido=contenido, tipo=tipo,
+                               inicio=inicio, fin=fin,
+                               activo=request.form.get("activo") == "on")
+                with engine.begin() as conexion:
+                    if accion == "crear":
+                        conexion.execute(insert(mensajes_portada).values(**valores))
+                    elif mid > 0:
+                        conexion.execute(update(mensajes_portada).where(mensajes_portada.c.id == mid).values(**valores))
+                return redirect(url_for("administrar_mensajes"))
+        elif accion in ("activar", "desactivar", "eliminar") and mid > 0:
+            with engine.begin() as conexion:
+                filtro = mensajes_portada.c.id == mid
+                if accion == "eliminar":
+                    conexion.execute(delete(mensajes_portada).where(filtro))
+                else:
+                    conexion.execute(update(mensajes_portada).where(filtro).values(activo=accion == "activar"))
+            return redirect(url_for("administrar_mensajes"))
+    with engine.connect() as conexion:
+        filas = conexion.execute(select(mensajes_portada).order_by(mensajes_portada.c.id.desc())).mappings().all()
+    return render_template("mensajes.html", mensajes=[dict(f) for f in filas],
+                           csrf=session["mensajes_csrf"], error=error)
+
+
 # Campos que se conservan para reconstruir exactamente un registro.
 CAMPOS_PRODUCTO = ("id", "producto", "codigo", "codigo_barras", "sucursal", "ubicacion")
 
@@ -539,6 +624,7 @@ def inicio():
         "index.html",
         busqueda=busqueda,
         resultado=resultado,
+        avisos=avisos_publicados(),
     )
 
 
