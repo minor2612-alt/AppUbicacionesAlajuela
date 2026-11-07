@@ -126,19 +126,62 @@ mensajes_portada = Table(
     Column("activo", Boolean, nullable=False, server_default=text("true")),
     Column("inicio", String(10), nullable=True),
     Column("fin", String(10), nullable=True),
+    Column("navideno", Boolean, nullable=False, server_default=text("false")),
 )
 
 
 def avisos_publicados():
-    from datetime import date
-    hoy = date.today().isoformat()
+    from datetime import datetime
+    # Hora de Costa Rica; las fechas particulares siguen funcionando igual.
+    hoy = datetime.now(timezone(timedelta(hours=-6))).date()
+    temporada_navidad = hoy.month == 12 or (hoy.month == 1 and hoy.day <= 6)
     with engine.connect() as conexion:
         filas = conexion.execute(select(mensajes_portada).where(
             mensajes_portada.c.activo.is_(True),
-            or_(mensajes_portada.c.inicio.is_(None), mensajes_portada.c.inicio <= hoy),
-            or_(mensajes_portada.c.fin.is_(None), mensajes_portada.c.fin >= hoy),
+            or_(mensajes_portada.c.inicio.is_(None), mensajes_portada.c.inicio <= hoy.isoformat()),
+            or_(mensajes_portada.c.fin.is_(None), mensajes_portada.c.fin >= hoy.isoformat()),
         ).order_by(mensajes_portada.c.id)).mappings().all()
-    return [dict(f) for f in filas]
+    return [dict(f) for f in filas if not f["navideno"] or temporada_navidad]
+
+
+# Catálogo inicial: se instala una sola vez, sin borrar ni alterar mensajes existentes.
+MENSAJES_INICIALES = [
+    ("🎅 ¡Felices Fiestas!", "Construplaza les desea una Navidad llena de paz, alegría y unión familiar.", "ambos", True),
+    ("🎁 ¡Gracias por su esfuerzo!", "Cada compañero es parte importante de nuestro éxito.", "recuadro", True),
+    ("⭐ La Navidad nos une", "Sigamos trabajando juntos con entusiasmo y compromiso.", "recuadro", True),
+    ("🎄 ¡Feliz Navidad y próspero Año Nuevo!", "Que el próximo año llegue lleno de oportunidades.", "recuadro", True),
+    ("📦 ¡Cada producto en su lugar!", "Una ubicación correcta facilita el trabajo de todos.", "ambos", False),
+    ("🔎 ¡Encuentra más rápido!", "Utiliza nuestro sistema para localizar los productos.", "cinta", False),
+    ("🤝 El trabajo en equipo hace la diferencia", "Juntos logramos mejores resultados.", "recuadro", False),
+    ("✅ ¡Mantengamos las ubicaciones actualizadas!", "La información correcta beneficia a todos.", "ambos", False),
+    ("💪 ¡Tu esfuerzo cuenta!", "Cada tarea bien realizada contribuye al éxito de Construplaza.", "cinta", False),
+    ("☀️ ¡Excelente jornada!", "Que hoy sea un día productivo y lleno de logros.", "recuadro", False),
+    ("🚀 ¡Siempre podemos mejorar!", "La innovación comienza con pequeñas ideas.", "recuadro", False),
+    ("🏆 ¡La excelencia está en los detalles!", "Hagamos nuestro trabajo con orgullo.", "recuadro", False),
+    ("🙌 ¡Gracias por ser parte del equipo!", "Cada persona aporta algo valioso.", "recuadro", False),
+]
+
+
+def instalar_mensajes_iniciales():
+    # Bandera persistente en Neon/SQLite: nunca vuelve a cargar los 13 por reinicio.
+    with engine.begin() as conexion:
+        bandera = conexion.execute(select(configuracion.c.valor).where(
+            configuracion.c.clave == "mensajes_iniciales_v1"
+        )).scalar_one_or_none()
+        if bandera is not None:
+            return
+        titulos = set(conexion.execute(select(mensajes_portada.c.titulo)).scalars())
+        for titulo, contenido, tipo, navideno in MENSAJES_INICIALES:
+            # Evita repetir el saludo navideño que ya se creó manualmente.
+            saludo_existente = navideno and "felices fiestas" in titulo.lower() and any(
+                "felices fiestas" in anterior.lower() for anterior in titulos
+            )
+            if titulo not in titulos and not saludo_existente:
+                conexion.execute(insert(mensajes_portada).values(
+                    titulo=titulo, contenido=contenido, tipo=tipo,
+                    navideno=navideno, activo=True
+                ))
+        conexion.execute(insert(configuracion).values(clave="mensajes_iniciales_v1", valor="si"))
 
 
 @app.route("/mensajes", methods=["GET", "POST"])
@@ -371,6 +414,12 @@ def crear_tablas_e_importar_excel() -> None:
     """
     metadata.create_all(engine)
     asegurar_columna_sucursal()
+    # Migración compatible con bases existentes: no se pierden mensajes previos.
+    columnas_mensajes = {c["name"] for c in inspect(engine).get_columns("mensajes_portada")}
+    if "navideno" not in columnas_mensajes:
+        with engine.begin() as conexion:
+            conexion.execute(text("ALTER TABLE mensajes_portada ADD COLUMN navideno BOOLEAN NOT NULL DEFAULT false"))
+    instalar_mensajes_iniciales()
     with engine.begin() as conexion:
         importacion = conexion.execute(
             select(configuracion.c.valor).where(
