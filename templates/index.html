@@ -41,11 +41,42 @@
 @keyframes cp-nevar { from { transform:translate3d(0,-30px,0) rotate(0); } to { transform:translate3d(35px,110vh,0) rotate(180deg); } }
 @media (prefers-reduced-motion:reduce) { .cp-bombillo,.cp-nieve { animation:none; } .cp-nieve { display:none; } }
 @media (max-width:600px) { .cp-luces { height:25px; } .cp-bombillo { width:8px; height:12px; } }
+/* Guirnalda navideña: se activa con la misma temporada que las luces */
+.cp-guirnalda { position:absolute; top:24px; left:0; width:clamp(145px,22vw,290px); height:auto; filter:drop-shadow(0 3px 4px rgba(0,0,0,.22)); }
+@media (max-width:600px) { .cp-guirnalda { top:17px; width:125px; } }
 </style>
 </head>
 
 <body>
 <div id="cp-navidad" class="cp-navidad" aria-hidden="true">
+  <!-- Guirnalda decorativa, sin archivos externos ni bloqueo de clics -->
+  <svg class="cp-guirnalda" viewBox="0 0 300 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <g id="cp-rama">
+        <path d="M0 0 Q24 14 52 2" fill="none" stroke="#23552d" stroke-width="8" stroke-linecap="round"/>
+        <path d="M5 0 l-5 -17 m14 22 l-2 -22 m13 26 l7 -22 m3 22 l17 -17 M8 2 l-6 17 m20 -11 l3 19 m12 -17 l13 16" stroke="#2f8542" stroke-width="7" stroke-linecap="round"/>
+        <path d="M4 -5 l-7 -8 m22 9 l-1 -11 m15 17 l11 -12 M14 9 l-7 13 m27 -12 l8 13" stroke="#62ad5c" stroke-width="3" stroke-linecap="round"/>
+      </g>
+    </defs>
+    <path d="M-10 10 Q75 105 185 40 Q245 12 302 18" fill="none" stroke="#164a2a" stroke-width="12"/>
+    <use href="#cp-rama" x="0" y="15" transform="rotate(35 0 15)"/>
+    <use href="#cp-rama" x="48" y="54" transform="rotate(12 48 54)"/>
+    <use href="#cp-rama" x="102" y="66" transform="rotate(-17 102 66)"/>
+    <use href="#cp-rama" x="156" y="47" transform="rotate(-22 156 47)"/>
+    <use href="#cp-rama" x="209" y="27" transform="rotate(-8 209 27)"/>
+    <g fill="#c92828" stroke="#9e161b" stroke-width="1.5">
+      <circle cx="62" cy="63" r="6"/><circle cx="72" cy="58" r="6"/><circle cx="68" cy="70" r="6"/>
+      <circle cx="208" cy="35" r="5"/><circle cx="216" cy="30" r="5"/><circle cx="215" cy="42" r="5"/>
+    </g>
+    <g stroke="#f7d883" stroke-width="2" fill="#e9b94b">
+      <circle cx="116" cy="93" r="13"/><circle cx="252" cy="49" r="10"/>
+    </g>
+    <path d="M110 78 l0 -7 m142 -33 l0 -6" stroke="#f8e5a5" stroke-width="3"/>
+    <path d="M135 67 C108 45 105 76 126 83 C110 96 124 108 139 87 C154 105 169 90 151 81 C172 61 149 47 139 73 Z" fill="#d6252f" stroke="#a51524" stroke-width="2"/>
+    <circle cx="139" cy="81" r="7" fill="#f04b4d"/>
+    <path d="M135 87 L121 121 L144 105 L155 126 L149 87" fill="#c51e2a" stroke="#a51524" stroke-width="2"/>
+    <g fill="#fff4bd"><circle cx="34" cy="40" r="3"/><circle cx="91" cy="76" r="3"/><circle cx="184" cy="48" r="3"/><circle cx="280" cy="22" r="3"/></g>
+  </svg>
   <div class="cp-luces" id="cp-luces"></div>
   <div id="cp-nieve"></div>
 </div>
@@ -229,7 +260,7 @@ campoBusqueda.value = codigoLimpio;
   const ahora = new Date();
   const mes = ahora.getMonth() + 1;
   const dia = ahora.getDate();
-  const temporada = mes === 12 || (mes === 1 && dia <= 6);
+  const temporada = (mes === 12 && dia >= 1) || (mes === 1 && dia <= 6); 
   const params = new URLSearchParams(window.location.search);
   const mostrar = params.get('navidad') === '1' || (temporada && params.get('navidad') !== '0');
   if (!mostrar) return;
