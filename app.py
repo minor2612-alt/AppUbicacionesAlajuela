@@ -543,6 +543,34 @@ def variantes_singular_plural(texto: str) -> list[str]:
 
     return variantes
 
+def datos_ingreso_por_registro(conexion, ids):
+    """Busca la primera alta registrada para cada fila, sin inventar datos antiguos."""
+    if not ids:
+        return {}
+    movimientos = conexion.execute(
+        select(historial_cambios.c.registro_id,
+               historial_cambios.c.usuario,
+               historial_cambios.c.fecha_hora)
+        .where(historial_cambios.c.entidad == "producto",
+               historial_cambios.c.accion == "agregar",
+               historial_cambios.c.registro_id.in_(ids))
+        .order_by(historial_cambios.c.id.asc())
+    ).mappings().all()
+    ingresos = {}
+    for mov in movimientos:
+        rid = mov["registro_id"]
+        if rid in ingresos:
+            continue
+        fecha = mov["fecha_hora"]
+        if fecha is not None:
+            fecha = fecha.replace(tzinfo=timezone.utc).astimezone(
+                timezone(timedelta(hours=-6))
+            ).strftime("%d/%m/%Y %I:%M %p")
+        ingresos[rid] = {"ingresado_por": mov["usuario"],
+                         "fecha_ingreso": fecha}
+    return ingresos
+
+
 def buscar_productos(texto: str = "") -> list[dict]:
     texto = texto.strip()
 
@@ -578,8 +606,11 @@ def buscar_productos(texto: str = "") -> list[dict]:
 
     with engine.connect() as conexion:
         filas = conexion.execute(consulta).mappings().all()
+        ingresos = datos_ingreso_por_registro(conexion, [fila["id"] for fila in filas])
 
-    return [dict(fila) for fila in filas]
+    return [dict(fila, **ingresos.get(fila["id"], {
+        "ingresado_por": None, "fecha_ingreso": None
+    })) for fila in filas]
 
 
 def crear_tabla_html(filas: list[dict], mostrar_eliminar=False) -> str: 
@@ -597,6 +628,8 @@ def crear_tabla_html(filas: list[dict], mostrar_eliminar=False) -> str:
         producto = escape(str(fila.get("producto", "")))
         codigo = escape(str(fila.get("codigo", "")))
         ubicacion = escape(str(fila.get("ubicacion", "")))
+        fecha_ingreso = escape(str(fila.get("fecha_ingreso") or "No disponible"))
+        ingresado_por = escape(str(fila.get("ingresado_por") or "No disponible"))
         
         registro_id = fila.get("id") 
         boton_eliminar = ""
@@ -634,6 +667,14 @@ def crear_tabla_html(filas: list[dict], mostrar_eliminar=False) -> str:
                 <span class="etiqueta">📍 Ubicación</span>
                 <span class="valor ubicacion">{ubicacion}</span>
             </div>
+             <div class="dato-producto">
+                 <span class="etiqueta">📅 Fecha de ingreso</span>
+                 <span class="valor">{fecha_ingreso}</span>
+             </div>
+             <div class="dato-producto">
+                 <span class="etiqueta">👤 Ingresado por</span>
+                 <span class="valor">{ingresado_por}</span>
+             </div>
             <a href="{enlace_whatsapp}"
                target="_blank"
                class="boton-whatsapp">

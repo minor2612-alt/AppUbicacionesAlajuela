@@ -42,7 +42,9 @@
         <strong>{{ fila.producto }}</strong><br>
         Código: {{ fila.codigo }}<br>
         Código de barras: {{ fila.codigo_barras or '-' }}<br>
-        📍 Ubicación: {{ fila.ubicacion }}<br><br>
+        📍 Ubicación: {{ fila.ubicacion }}<br>
+        📅 Fecha de ingreso: {{ fila.fecha_ingreso or 'No disponible' }}<br>
+        👤 Ingresado por: {{ fila.ingresado_por or 'No disponible' }}<br><br>
 
         <div class="acciones-admin">
     <a class="boton accion-admin" href="{{ url_for('editar', codigo=fila.codigo) }}">
