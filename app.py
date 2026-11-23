@@ -10,7 +10,8 @@ from datetime import timezone, timedelta
 import pandas as pd
 from html import escape
 from urllib.parse import quote
-from flask import Flask, redirect, render_template, request, session, jsonify, url_for, send_from_directory
+from io import BytesIO 
+from flask import Flask, redirect, render_template, send_file, render_template_string, request, session, jsonify, url_for, send_from_directory
 from sqlalchemy import (
  
     Boolean,
@@ -93,6 +94,7 @@ usuarios = Table(
     Column("puede_eliminar", Boolean, nullable=False, server_default=text("false")),
     Column("puede_eliminar_ubicacion", Boolean, nullable=False, server_default=text("false")),
     Column("puede_actualizar_excel", Boolean, nullable=False, server_default=text("false")),
+    Column("puede_imprimir_etiquetas", Boolean, nullable=False, server_default=text("false")),
     Column("creado_en", DateTime, nullable=False, server_default=func.now()),
 )
 
@@ -414,6 +416,11 @@ def crear_tablas_e_importar_excel() -> None:
     """
     metadata.create_all(engine)
     asegurar_columna_sucursal()
+    # Permiso nuevo: migración segura para usuarios existentes.
+    columnas_usuarios = {c["name"] for c in inspect(engine).get_columns("usuarios")}
+    if "puede_imprimir_etiquetas" not in columnas_usuarios:
+        with engine.begin() as conexion:
+            conexion.execute(text("ALTER TABLE usuarios ADD COLUMN puede_imprimir_etiquetas BOOLEAN NOT NULL DEFAULT false"))
     # Migración compatible con bases existentes: no se pierden mensajes previos.
     columnas_mensajes = {c["name"] for c in inspect(engine).get_columns("mensajes_portada")}
     if "navideno" not in columnas_mensajes:
@@ -753,6 +760,7 @@ def login():
             session["puede_eliminar"] = usuario_db["puede_eliminar"]
             session["puede_eliminar_ubicacion"] = usuario_db["puede_eliminar_ubicacion"]
             session["puede_actualizar_excel"] = usuario_db["puede_actualizar_excel"]
+            session["puede_imprimir_etiquetas"] = usuario_db["puede_imprimir_etiquetas"]
 
             return redirect(url_for("admin"))
 
@@ -1637,6 +1645,7 @@ def gestionar_usuarios():
                             puede_actualizar_excel=(
                                 request.form.get("puede_actualizar_excel") == "on"
                             ),
+                            puede_imprimir_etiquetas=request.form.get("puede_imprimir_etiquetas") == "on",
                         )
                     )
                     mensaje = "Usuario creado correctamente."
@@ -1654,6 +1663,7 @@ def gestionar_usuarios():
                 usuarios.c.puede_eliminar,
                 usuarios.c.puede_eliminar_ubicacion,
                 usuarios.c.puede_actualizar_excel,
+                usuarios.c.puede_imprimir_etiquetas,
             ).order_by(usuarios.c.usuario)
         ).mappings().all()
 
@@ -1699,6 +1709,10 @@ def editar_usuario(usuario_id):
                 "puede_actualizar_excel": (
                     True if es_superadmin
                     else request.form.get("puede_actualizar_excel") == "on"
+                ),
+                "puede_imprimir_etiquetas": (
+                    True if es_superadmin
+                    else request.form.get("puede_imprimir_etiquetas") == "on"
                 ),
             }
 
@@ -1755,5 +1769,146 @@ def eliminar_desde_inventario(registro_id):
 
 
 
+# Etiquetas Zebra ZD230t: PDF a tamaño real, 47 x 33 mm.
+# Requiere reportlab en requirements.txt.
+def tiene_permiso_etiquetas():
+    return bool(session.get("admin") and
+                (es_admin_principal() or session.get("puede_imprimir_etiquetas")))
+
+
+@app.route("/etiquetas")
+def etiquetas():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    if not tiene_permiso_etiquetas():
+        return ("No tiene permiso para imprimir etiquetas.", 403)
+
+    buscar = request.args.get("buscar", "").strip()
+    filas = []
+    if buscar:
+        # Se consultan los datos reales; no se genera ningún código de barras.
+        with engine.connect() as conexion:
+            filas = conexion.execute(
+                select(productos.c.id, productos.c.producto,
+                       productos.c.codigo, productos.c.codigo_barras)
+                .where(func.lower(productos.c.sucursal) == "alajuela")
+                .where(or_(productos.c.producto.ilike(f"%{buscar}%"),
+                           productos.c.codigo.ilike(f"%{buscar}%"),
+                           productos.c.codigo_barras.ilike(f"%{buscar}%")))
+                .order_by(productos.c.producto, productos.c.id)
+                .limit(80)
+            ).mappings().all()
+    # Página provisional independiente: no modifica las plantillas existentes.
+    return render_template_string('''<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Etiquetas de productos</title><style>
+body{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:24px;color:#333}
+main{max-width:780px;margin:auto;background:white;border-radius:12px;padding:24px}
+h1{color:#e65b12}input{padding:12px;width:65%;max-width:400px}button,a.boton{background:#e65b12;color:white;padding:12px;border:0;border-radius:6px;text-decoration:none;display:inline-block}
+.item{padding:14px 0;border-bottom:1px solid #ddd}.aviso{color:#9b351b}
+</style></head><body><main><h1>Imprimir etiquetas</h1>
+<p>Formato Zebra ZD230t · 47 × 33 mm · Código de barras del producto.</p>
+<form method="get"><input name="buscar" value="{{ buscar }}" placeholder="Producto o código" required><button>Buscar</button></form>
+{% if buscar and not filas %}<p>No se encontraron productos.</p>{% endif %}
+{% for fila in filas %}<div class="item"><strong>{{ fila.producto }}</strong><p>Código: {{ fila.codigo }}</p>
+{% if fila.codigo_barras %}<p>Código de barras: {{ fila.codigo_barras }}</p>
+<a class="boton" href="{{ url_for('etiqueta_pdf', registro_id=fila.id) }}" target="_blank" rel="noopener">Ver etiqueta PDF</a>
+{% else %}<p class="aviso">Sin código de barras registrado: no se puede imprimir.</p>{% endif %}</div>{% endfor %}
+<p><a href="{{ url_for('admin') }}">Volver a administración</a></p></main></body></html>''', buscar=buscar, filas=filas)
+
+
+@app.route("/etiquetas/<int:registro_id>.pdf")
+def etiqueta_pdf(registro_id):
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    if not tiene_permiso_etiquetas():
+        return ("No tiene permiso para imprimir etiquetas.", 403)
+
+    with engine.connect() as conexion:
+        fila = conexion.execute(select(productos).where(
+            productos.c.id == registro_id,
+            func.lower(productos.c.sucursal) == "alajuela"
+        )).mappings().first()
+    if fila is None:
+        return ("Producto no encontrado.", 404)
+
+    codigo = (fila["codigo_barras"] or "").strip()
+    if not codigo:
+        return ("Este producto no tiene código de barras registrado.", 422)
+    # Code128 representa códigos alfanuméricos. No aceptar caracteres que
+    # no puedan imprimirse ni datos excesivamente largos en una etiqueta pequeña.
+    if not codigo.isascii() or not codigo.isprintable() or len(codigo) > 40:
+        return ("Código de barras no compatible con la etiqueta.", 422)
+
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import mm
+    from reportlab.graphics.barcode import code128
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    ancho, alto = 47 * mm, 33 * mm
+    margen = 2.2 * mm
+    salida = BytesIO()
+    pdf = canvas.Canvas(salida, pagesize=(ancho, alto), pageCompression=1)
+    pdf.setTitle("Etiqueta de producto")
+
+    descripcion = " ".join(str(fila["producto"]).split())
+    # Ajuste de descripción en hasta dos líneas, sin salir del papel.
+    max_texto = ancho - 2 * margen
+    palabras = descripcion.split()
+    lineas = []
+    actual = ""
+    for palabra in palabras:
+        candidato = (actual + " " + palabra).strip()
+        if stringWidth(candidato, "Helvetica-Bold", 7.2) <= max_texto:
+            actual = candidato
+        else:
+            if actual:
+                lineas.append(actual)
+            actual = palabra
+    if actual:
+        lineas.append(actual)
+    for i, linea in enumerate(lineas[:2]):
+        while stringWidth(linea, "Helvetica-Bold", 7.2) > max_texto and linea:
+            linea = linea[:-1]
+        if i == 1 and len(lineas) > 2:
+            while stringWidth(linea + "...", "Helvetica-Bold", 7.2) > max_texto and linea:
+                linea = linea[:-1]
+            linea += "..."
+        pdf.setFont("Helvetica-Bold", 7.2)
+        pdf.drawCentredString(ancho / 2, alto - margen - 7.5 - i * 8.5, linea)
+
+    # Código interno debajo de la descripción y encima de las barras.
+    codigo_interno = str(fila["codigo"] or "").strip()
+    texto_interno = f"Código interno: {codigo_interno}"
+    fuente_interna = 6.5
+    while stringWidth(texto_interno, "Helvetica", fuente_interna) > max_texto and fuente_interna > 4.5:
+        fuente_interna -= 0.25
+    if stringWidth(texto_interno, "Helvetica", fuente_interna) > max_texto:
+        return ("El código interno es demasiado largo para la etiqueta.", 422)
+    pdf.setFont("Helvetica", fuente_interna)
+    pdf.drawCentredString(ancho / 2, 24 * mm, texto_interno)
+
+    # Escala el Code128 real al ancho disponible, manteniendo las barras nítidas.
+    barras = code128.Code128(codigo, barWidth=0.28 * mm, barHeight=12 * mm,
+                            humanReadable=False, quiet=False)
+    disponible = ancho - 2 * margen
+    escala = min(1.0, disponible / barras.width)
+    pdf.saveState()
+    pdf.translate((ancho - barras.width * escala) / 2, 8.2 * mm)
+    pdf.scale(escala, 1)
+    barras.drawOn(pdf, 0, 0)
+    pdf.restoreState()
+    pdf.setFont("Helvetica", 7)
+    pdf.drawCentredString(ancho / 2, 4.5 * mm, codigo)
+    pdf.showPage()
+    pdf.save()
+    salida.seek(0)
+    respuesta = send_file(salida, mimetype="application/pdf",
+                          as_attachment=False, download_name=f"etiqueta_{registro_id}.pdf")
+    respuesta.headers["Cache-Control"] = "no-store"
+    return respuesta
+
+
 if __name__ == "__main__":
     app.run(debug=True)
+
