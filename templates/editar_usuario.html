@@ -212,6 +212,12 @@
                     </label>
                 </div>
 
+                <div class="permiso">
+                    <input type="checkbox" name="puede_imprimir_etiquetas" id="puede_imprimir_etiquetas"
+                           {% if usuario.puede_imprimir_etiquetas %}checked{% endif %}>
+                    <label for="puede_imprimir_etiquetas">Imprimir etiquetas</label>
+                </div>
+
             {% endif %}
 
             <button type="submit">

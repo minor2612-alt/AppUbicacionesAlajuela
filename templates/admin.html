@@ -81,6 +81,9 @@
 <a class="boton" href="/eliminar_ubicacion">📦 Eliminar ubicación</a>
 {% endif %}
     <a class="boton" href="/inventario">📋 Ver inventario</a>
+ {% if session.get("es_superadmin") or session.get("puede_imprimir_etiquetas") %}
+<a class="boton" href="/etiquetas">🏷️ Imprimir etiquetas</a>
+{% endif %}   
     {% if session.get("es_superadmin") or session.get("puede_actualizar_excel") %}
 <a class="boton" href="/actualizar_excel">📊 Actualizar desde Excel</a>
 {% endif %}

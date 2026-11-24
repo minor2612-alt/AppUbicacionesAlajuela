@@ -59,6 +59,7 @@
                 <div class="permiso"><input type="checkbox" name="puede_eliminar" id="pel"><label for="pel">Eliminar productos</label></div>
                 <div class="permiso"><input type="checkbox" name="puede_eliminar_ubicacion" id="peu"><label for="peu">Eliminar ubicaciones</label></div>
                 <div class="permiso"><input type="checkbox" name="puede_actualizar_excel" id="pax"><label for="pax">Actualizar desde Excel</label></div>
+                <div class="permiso"><input type="checkbox" name="puede_imprimir_etiquetas" id="pie"><label for="pie">Imprimir etiquetas</label></div>
 
                 <button class="principal" type="submit">Crear usuario</button>
             </form>
@@ -83,6 +84,7 @@
                                 {% if u.puede_eliminar %}Eliminar · {% endif %}
                                 {% if u.puede_eliminar_ubicacion %}Eliminar ubicación · {% endif %}
                                 {% if u.puede_actualizar_excel %}Actualizar Excel{% endif %}
+                                {% if u.puede_imprimir_etiquetas %} · Imprimir etiquetas{% endif %}
                             {% endif %}
                         </div>
                         <a class="boton editar" href="{{ url_for('editar_usuario', usuario_id=u.id) }}">Editar usuario y permisos</a>

@@ -1875,7 +1875,7 @@ def etiqueta_pdf(registro_id):
                 linea = linea[:-1]
             linea += "..."
         pdf.setFont("Helvetica-Bold", 7.2)
-        pdf.drawCentredString(ancho / 2, alto - margen - 7.5 - i * 8.5, linea)
+        pdf.drawCentredString(ancho / 2, alto - 4.5 * mm - i * 3.4 * mm, linea)
 
     # Código interno debajo de la descripción y encima de las barras.
     codigo_interno = str(fila["codigo"] or "").strip()
@@ -1886,11 +1886,11 @@ def etiqueta_pdf(registro_id):
     if stringWidth(texto_interno, "Helvetica", fuente_interna) > max_texto:
         return ("El código interno es demasiado largo para la etiqueta.", 422)
     pdf.setFont("Helvetica", fuente_interna)
-    pdf.drawCentredString(ancho / 2, 24 * mm, texto_interno)
+    pdf.drawCentredString(ancho / 2, 21 * mm, texto_interno)
 
     # Escala el Code128 real al ancho disponible, manteniendo las barras nítidas.
-    barras = code128.Code128(codigo, barWidth=0.28 * mm, barHeight=12 * mm,
-                            humanReadable=False, quiet=False)
+    barras = code128.Code128(codigo, barWidth=0.28 * mm, barHeight=9 * mm,
+                            humanReadable=False, quiet=True)
     disponible = ancho - 2 * margen
     escala = min(1.0, disponible / barras.width)
     pdf.saveState()
