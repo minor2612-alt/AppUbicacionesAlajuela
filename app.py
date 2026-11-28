@@ -593,7 +593,13 @@ def buscar_productos(texto: str = "") -> list[dict]:
         productos.c.ubicacion,
     )
 
-    if texto:
+    if texto and texto.isdecimal():
+        # Los códigos numéricos deben coincidir completos, nunca parcialmente.
+        consulta = consulta.where(or_(
+            productos.c.codigo == texto,
+            productos.c.codigo_barras == texto,
+        ))
+    elif texto:
         variantes = variantes_singular_plural(texto)
         condiciones = []
 
